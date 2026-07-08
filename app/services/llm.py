@@ -1069,7 +1069,7 @@ def generate_manim_spec(
     ``app/services/manim_video.py::validate_or_default``. On any LLM/parse
     failure this returns an empty dict so the caller falls back to a default.
     """
-    segment_count = max(4, min(6, round(duration / 8)))
+    segment_count = max(10, min(18, round(duration / 3.5)))
     prompt = f"""
 # Role: Manim Math-Explainer Scene Designer
 
@@ -1077,35 +1077,48 @@ def generate_manim_spec(
 Design the on-screen visuals for a {int(duration)}-second vertical (9:16) math
 explainer video, as a JSON scene spec rendered by fixed Manim templates.
 
+Every segment MUST have motion: the renderer animates continuously (staggered
+reveals, curve tracers, doubling counters, bar growth, pulses). Design ONE
+visual beat per narration moment — never pack multiple story beats into one
+segment.
+
 ## Output format
 Return ONLY a JSON object (no prose, no code fence) with this shape:
 {{
   "title": "short video title",
   "accent_color": "#4da6ff",
   "background_color": "#0b0f1a",
-  "segments": [ /* about {segment_count} segments, in narration order */ ]
+  "segments": [ /* {segment_count} to {min(18, segment_count + 2)} segments, in narration order */ ]
 }}
 
 ## Allowed segment types (use "type" plus only its listed fields)
 - "title_card": {{ "title": str, "subtitle": str (optional), "narration_hint": str (optional) }}
 - "equation_reveal": {{ "caption": str (optional), "equations": [LaTeX string, ...], "narration_hint": str }}
-- "step_by_step": {{ "title": str, "steps": [str, ...], "narration_hint": str (optional) }}
-- "bullet_points": {{ "title": str, "points": [str, ...], "narration_hint": str (optional) }}
-- "axes_plot": {{ "function": "python expr in x", "x_range": [min,max], "y_range": [min,max], "label": str (optional), "narration_hint": str (optional) }}
+- "step_by_step": {{ "title": str (optional), "steps": [str, ...], "narration_hint": str }} — ONE step per segment when possible; steps reveal one-by-one with animation
+- "bullet_points": {{ "title": str (optional), "points": [str, ...], "narration_hint": str }} — ONE point per segment when possible
+- "axes_plot": {{ "function": "python expr in x", "x_range": [min,max], "y_range": [min,max], "label": str (optional), "narration_hint": str }} — ANIMATED: curve draws over time with a moving tracer dot
 - "number_line": {{ "x_range": [min,max], "label": str (optional), "narration_hint": str (optional) }}
+- "counter_doubling": {{ "title": str (optional), "start_value": number, "count": int (optional), "end_value": number (optional), "label": str (optional), "narration_hint": str }} — ANIMATED: number doubles step-by-step (great for "doubling penny", seeds, bacteria)
+- "growth_bars": {{ "title": str (optional), "values": [number, ...], "labels": [str, ...], "narration_hint": str }} — ANIMATED: bars grow one at a time (use for day 1 / day 10 / day 20 milestones)
+- "value_pop": {{ "title": str (optional), "caption": str, "narration_hint": str }} — ANIMATED: one big number or phrase pops onto screen (e.g. "1,200 plants", "City Block")
 - "right_triangle": {{ "side_a": number, "side_b": number, "caption": str (optional), "narration_hint": str }}
 - "squares_on_sides": {{ "side_a": number, "side_b": number, "title": str (optional), "narration_hint": str }}
 - "pythagorean_triple": {{ "side_a": number, "side_b": number, "narration_hint": str }} — triangle + squares + "9 + 16 = 25" summary
 - "squares_transform": {{ "side_a": number, "side_b": number, "title": str (optional), "narration_hint": str }} — ANIMATED: the two leg squares visibly slide onto and fill the hypotenuse square, then "9 + 16 = 25" appears
-- "area_grid": {{ "side": int, "title": str (optional), "narration_hint": str }} — n×n grid showing area = n²
+- "area_grid": {{ "side": int, "title": str (optional), "narration_hint": str }} — n×n grid showing area = n²; cells fill in with animation
 - "highlight": {{ "narration_hint": str }} — pulses whatever is already on screen; use when the narration refers back to an equation or diagram that is already displayed
 
 ## Visual design rules
-- Do NOT start with title_card — open directly on the first concept (triangle, equation, etc.).
+- Do NOT start with title_card — open directly on the first concept (equation, counter, graph, etc.).
+- Use {segment_count}+ micro-segments: each covers ONE spoken beat (roughly 3–5 seconds).
+- NEVER put 3+ timeline milestones (Day 1, Day 10, Day 20…) in a single step_by_step.
+  Instead use separate value_pop / counter_doubling / growth_bars segments, one per milestone.
+- For exponential / doubling / time-series topics you MUST use counter_doubling, growth_bars,
+  value_pop, and axes_plot — not a static bullet list.
 - For geometry topics (Pythagorean theorem, triangles, area, squares), you MUST use at least
   two of: right_triangle, squares_on_sides, pythagorean_triple, area_grid.
-- If you use ANY geometry template, you MUST NOT use number_line, axes_plot, or bullet_points
-  anywhere in the spec — they break the visual story and will be removed.
+- If you use ANY geometry template, you MUST NOT use number_line, axes_plot, bullet_points,
+  counter_doubling, growth_bars, or value_pop anywhere in the spec — they break the visual story.
 - For a 3-4-5 example use side_a=3, side_b=4 in geometry segments.
 - When the narration says the two smaller squares ADD UP TO / FILL / COMBINE INTO the big
   square, you MUST use "squares_transform" (an animation of the areas moving) rather than a
@@ -1123,10 +1136,11 @@ Return ONLY a JSON object (no prose, no code fence) with this shape:
 
 ## Constraints
 1. Return only valid JSON. No markdown, no code fence, no comments.
-2. Use about {segment_count} segments that follow the narration's order.
+2. Use {segment_count} to {min(18, segment_count + 2)} segments that follow the narration's order.
 3. equations use LaTeX WITHOUT surrounding $ (e.g. "a^2 + b^2 = c^2").
 4. axes_plot "function" must use only x and math functions (sin, cos, exp, log, sqrt, abs); no imports, no other names.
 5. Keep text short — a few words per line so it fits a phone screen.
+6. growth_bars "values" must be positive numbers; use labels like "Day 1", "Day 10" matching the narration.
 
 ## Context
 ### Video Subject

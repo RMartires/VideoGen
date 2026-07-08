@@ -31,10 +31,14 @@ from manim import (
     UP,
     Axes,
     Create,
+    Dot,
+    FadeIn,
     FadeOut,
     Indicate,
+    MoveAlongPath,
     NumberLine,
     Polygon,
+    Rectangle,
     Scene,
     Square,
     Text,
@@ -251,24 +255,33 @@ class MathExplainerScene(Scene):
             "pythagorean_triple": self._pythagorean_triple,
             "squares_transform": self._squares_transform,
             "area_grid": self._area_grid,
+            "counter_doubling": self._counter_doubling,
+            "growth_bars": self._growth_bars,
+            "value_pop": self._value_pop,
         }
+        # Geometry diagrams: one-shot Create intro.
         create_types = {
-            "axes_plot",
             "number_line",
             "right_triangle",
             "squares_on_sides",
             "pythagorean_triple",
             "squares_transform",
-            "area_grid",
         }
-        # Post-intro animations that play out INSIDE a segment's time slot.
-        animators: dict[str, Callable[[dict[str, Any], VGroup, float], float]] = {
+        # These build a shell first; animators reveal content over the slot.
+        stagger_types = {"step_by_step", "bullet_points", "equation_reveal"}
+        slot_animators: dict[str, Callable[[dict[str, Any], VGroup, float], float]] = {
+            "step_by_step": self._animate_stagger_reveal,
+            "bullet_points": self._animate_stagger_reveal,
+            "equation_reveal": self._animate_stagger_reveal,
+            "axes_plot": self._animate_axes_plot,
             "squares_transform": self._animate_squares_transform,
+            "area_grid": self._animate_area_grid,
+            "counter_doubling": self._animate_counter_doubling,
+            "growth_bars": self._animate_growth_bars,
+            "value_pop": self._animate_value_pop,
+            "number_line": self._animate_number_line,
         }
 
-        # Each segment appears at its absolute start time (matched to the
-        # narration by apply_subtitle_timing); the current visual simply holds
-        # until the next start. Without spec starts, fall back to even slots.
         current = None
         elapsed = 0.0
         prev_start = 0.0
@@ -284,28 +297,42 @@ class MathExplainerScene(Scene):
             start = max(start, prev_start)
             prev_start = start
 
+            raw_duration = segment.get("duration")
+            slot = float(raw_duration) if raw_duration is not None else default_slot
+            if index + 1 < len(segments):
+                next_raw = segments[index + 1].get("start")
+                if next_raw is not None:
+                    slot_end = float(next_raw)
+                else:
+                    slot_end = start + slot
+            else:
+                slot_end = total
+            slot_end = min(max(slot_end, start + 0.5), total)
+
             if seg_type == "highlight":
-                # The narration is referring back to what is already on
-                # screen: pulse it instead of replacing it.
                 if current is None:
                     continue
                 if start > elapsed:
-                    self.wait(start - elapsed)
-                    elapsed = start
+                    elapsed += self._animate_hold(
+                        current, segment, seg_type, start - elapsed
+                    )
+                pulse_time = 1.0
                 self.play(
                     Indicate(current, scale_factor=1.06, color=self.accent),
-                    run_time=1.2,
+                    run_time=pulse_time,
                 )
-                elapsed += 1.2
+                elapsed += pulse_time
+                hold = slot_end - elapsed
+                if hold > 0:
+                    elapsed += self._animate_hold(
+                        current, segment, seg_type, hold
+                    )
                 continue
 
             builder = builders.get(seg_type, self._title_card)
             try:
                 mobject = builder(segment)
             except Exception:
-                # Surface the failure in the manim CLI output (captured by
-                # render_manim_video) and keep the previous visual on screen
-                # rather than flashing a broken placeholder.
                 print(
                     f"[manim_templates] segment {index} ({seg_type}) failed to build:",
                     flush=True,
@@ -314,33 +341,62 @@ class MathExplainerScene(Scene):
                 continue
 
             if start > elapsed:
-                self.wait(start - elapsed)
-                elapsed = start
+                elapsed += self._animate_hold(
+                    current, segment, seg_type, start - elapsed
+                )
 
             if current is not None:
                 self.play(FadeOut(current), run_time=fade_time)
                 elapsed += fade_time
-            if seg_type in create_types:
+
+            if seg_type in stagger_types:
+                shell = getattr(mobject, "stagger_shell", None)
+                if shell is not None:
+                    self.play(Write(shell), run_time=0.7)
+                    elapsed += 0.7
+                elif getattr(mobject, "stagger_items", None):
+                    self.play(FadeIn(mobject, shift=UP * 0.15), run_time=0.5)
+                    elapsed += 0.5
+                else:
+                    self.play(Write(mobject), run_time=write_time)
+                    elapsed += write_time
+            elif seg_type == "axes_plot":
+                parts = getattr(mobject, "plot_parts", None) or {}
+                intro_group = VGroup(parts.get("axes"))
+                label = parts.get("label")
+                if label is not None:
+                    intro_group.add(label)
+                self.play(Create(intro_group), run_time=intro_time)
+                elapsed += intro_time
+            elif seg_type in create_types:
                 self.play(Create(mobject), run_time=intro_time)
                 elapsed += intro_time
+            elif seg_type in {"counter_doubling", "growth_bars", "value_pop"}:
+                shell = getattr(mobject, "anim_shell", None)
+                if shell is not None:
+                    self.play(FadeIn(shell, shift=UP * 0.1), run_time=0.6)
+                    elapsed += 0.6
+                else:
+                    self.play(FadeIn(mobject), run_time=0.6)
+                    elapsed += 0.6
+            elif seg_type == "area_grid":
+                shell = getattr(mobject, "grid_shell", None)
+                if shell is not None:
+                    self.play(FadeIn(shell, shift=UP * 0.1), run_time=0.6)
+                    elapsed += 0.6
+                else:
+                    self.play(Create(mobject), run_time=intro_time)
+                    elapsed += intro_time
             else:
-                # Text and equations appear as if written by hand while the
-                # narration introduces them.
                 self.play(Write(mobject), run_time=write_time)
                 elapsed += write_time
             current = mobject
 
-            animator = animators.get(seg_type)
-            if animator is not None:
-                raw_duration = segment.get("duration")
-                slot = (
-                    float(raw_duration)
-                    if raw_duration is not None
-                    else default_slot
-                )
-                budget = start + slot - elapsed
+            hold_budget = max(0.0, slot_end - elapsed)
+            animator = slot_animators.get(seg_type)
+            if hold_budget > 0 and animator is not None:
                 try:
-                    elapsed += animator(segment, mobject, max(0.0, budget))
+                    elapsed += animator(segment, mobject, hold_budget)
                 except Exception:
                     print(
                         f"[manim_templates] segment {index} ({seg_type}) "
@@ -348,20 +404,106 @@ class MathExplainerScene(Scene):
                         flush=True,
                     )
                     traceback.print_exc()
+                    elapsed += self._animate_hold(
+                        current, segment, seg_type, hold_budget
+                    )
+            elif hold_budget > 0:
+                elapsed += self._animate_hold(
+                    current, segment, seg_type, hold_budget
+                )
 
         if current is None:
-            # Every builder failed; render a safe title card instead of a
-            # black video so the task still produces something usable.
             fallback = self._title_card({"title": spec.get("title") or "Math"})
             self.play(Write(fallback), run_time=intro_time)
             elapsed += intro_time
             current = fallback
 
-        # Hold the final visual so the render covers the full narration.
         tail = total - elapsed - outro_time
         if tail > 0:
-            self.wait(tail)
+            elapsed += self._animate_hold(current, {}, "title_card", tail)
         self.play(FadeOut(current), run_time=outro_time)
+
+    def _animate_hold(
+        self,
+        mobject: VGroup | None,
+        segment: dict[str, Any],
+        seg_type: str,
+        budget: float,
+    ) -> float:
+        """Fill ``budget`` seconds with motion instead of a frozen wait."""
+        if budget <= 0:
+            return 0.0
+        if mobject is None:
+            self.wait(budget)
+            return budget
+
+        parts = getattr(mobject, "plot_parts", None)
+        graph = parts.get("graph") if parts else None
+        if graph is not None and budget >= 1.2:
+            return self._tracer_loops(mobject, graph, budget)
+
+        return self._idle_pulses(mobject, budget)
+
+    def _idle_pulses(self, mobject: VGroup, budget: float) -> float:
+        consumed = 0.0
+        pulse_time = 0.65
+        gap_time = 0.55
+        while consumed + pulse_time <= budget:
+            self.play(
+                Indicate(mobject, scale_factor=1.04, color=self.accent),
+                run_time=pulse_time,
+            )
+            consumed += pulse_time
+            rest = min(gap_time, budget - consumed)
+            if rest > 0.05:
+                self.wait(rest)
+                consumed += rest
+        leftover = budget - consumed
+        if leftover > 0.05:
+            self.wait(leftover)
+            consumed += leftover
+        return consumed
+
+    def _tracer_loops(self, group: VGroup, graph, budget: float) -> float:
+        consumed = 0.0
+        loop_time = min(2.2, max(1.0, budget * 0.45))
+        dot = Dot(color=self.accent, radius=0.07)
+        dot.move_to(graph.get_start())
+        self.add(dot)
+        while consumed + loop_time <= budget - 0.2:
+            self.play(MoveAlongPath(dot, graph), run_time=loop_time)
+            consumed += loop_time
+        self.remove(dot)
+        if budget - consumed > 0.05:
+            consumed += self._idle_pulses(group, budget - consumed)
+        return consumed
+
+    def _animate_stagger_reveal(
+        self, segment: dict[str, Any], group: VGroup, budget: float
+    ) -> float:
+        items = getattr(group, "stagger_items", None) or []
+        if not items:
+            return self._idle_pulses(group, budget)
+
+        consumed = 0.0
+        per_item = min(1.4, max(0.55, budget / max(1, len(items))))
+        for item in items:
+            if consumed + per_item * 0.85 > budget:
+                break
+            write_t = per_item * 0.65
+            self.play(Write(item), run_time=write_t)
+            consumed += write_t
+            pulse_t = min(0.35, per_item * 0.25, budget - consumed)
+            if pulse_t > 0.08:
+                self.play(
+                    Indicate(item, scale_factor=1.06, color=self.accent),
+                    run_time=pulse_t,
+                )
+                consumed += pulse_t
+
+        if budget - consumed > 0.05:
+            consumed += self._idle_pulses(group, budget - consumed)
+        return consumed
 
     # --- helpers -----------------------------------------------------------
     def _math(self, expr: str, **kwargs: Any):
@@ -433,39 +575,75 @@ class MathExplainerScene(Scene):
         if isinstance(equations, str):
             equations = [equations]
         group = VGroup()
+        shell = None
         caption = segment.get("caption")
         if caption:
-            group.add(Text(str(caption), color=self.text_color, font_size=40))
+            shell = Text(str(caption), color=self.text_color, font_size=40)
+            group.add(shell)
+        reveal_items = []
         for eq in equations:
-            group.add(self._math(str(eq), color=self.text_color, font_size=56))
+            mob = self._math(str(eq), color=self.text_color, font_size=56)
+            mob.set_opacity(0)
+            reveal_items.append(mob)
+            group.add(mob)
         if not group:
-            group.add(Text("=", color=self.text_color, font_size=56))
+            mob = Text("=", color=self.text_color, font_size=56)
+            mob.set_opacity(0)
+            reveal_items.append(mob)
+            group.add(mob)
         group.arrange(DOWN, buff=0.6)
-        return self._fit(group)
+        group = self._fit(group)
+        group.stagger_shell = shell
+        group.stagger_items = reveal_items
+        return group
 
     def _step_by_step(self, segment: dict[str, Any]) -> VGroup:
         group = VGroup()
+        shell = None
         title = segment.get("title")
         if title:
-            group.add(Text(str(title), color=self.accent, weight="BOLD", font_size=48))
+            shell = Text(str(title), color=self.accent, weight="BOLD", font_size=48)
+            group.add(shell)
+        reveal_items = []
         for i, step in enumerate(segment.get("steps") or [], start=1):
-            group.add(Text(f"{i}. {step}", color=self.text_color, font_size=36))
+            item = Text(f"{i}. {step}", color=self.text_color, font_size=36)
+            item.set_opacity(0)
+            reveal_items.append(item)
+            group.add(item)
         if len(group) == 0:
-            group.add(Text(str(segment.get("title", "Steps")), color=self.text_color, font_size=48))
+            item = Text(str(segment.get("title", "Steps")), color=self.text_color, font_size=48)
+            item.set_opacity(0)
+            reveal_items.append(item)
+            group.add(item)
         group.arrange(DOWN, buff=0.4, aligned_edge=UP)
-        return self._fit(group)
+        group = self._fit(group)
+        group.stagger_shell = shell
+        group.stagger_items = reveal_items
+        return group
 
     def _bullet_points(self, segment: dict[str, Any]) -> VGroup:
         group = VGroup()
+        shell = None
         title = segment.get("title")
         if title:
-            group.add(Text(str(title), color=self.accent, weight="BOLD", font_size=48))
+            shell = Text(str(title), color=self.accent, weight="BOLD", font_size=48)
+            group.add(shell)
+        reveal_items = []
         for point in segment.get("points") or []:
-            group.add(Text(f"- {point}", color=self.text_color, font_size=36))
+            item = Text(f"- {point}", color=self.text_color, font_size=36)
+            item.set_opacity(0)
+            reveal_items.append(item)
+            group.add(item)
         if len(group) == 0:
-            group.add(Text(str(segment.get("title", "Notes")), color=self.text_color, font_size=48))
+            item = Text(str(segment.get("title", "Notes")), color=self.text_color, font_size=48)
+            item.set_opacity(0)
+            reveal_items.append(item)
+            group.add(item)
         group.arrange(DOWN, buff=0.4, aligned_edge=UP)
-        return self._fit(group)
+        group = self._fit(group)
+        group.stagger_shell = shell
+        group.stagger_items = reveal_items
+        return group
 
     def _axes_plot(self, segment: dict[str, Any]) -> VGroup:
         x_range = segment.get("x_range") or [-5, 5]
@@ -485,7 +663,7 @@ class MathExplainerScene(Scene):
             y_range=_with_step(y_range),
             axis_config={"color": self.text_color, "include_tip": True},
         )
-        group = VGroup(axes)
+        x_min, x_max = float(x_range[0]), float(x_range[1])
         expr = segment.get("function")
         if expr:
             fn = _safe_math_fn(str(expr))
@@ -494,7 +672,6 @@ class MathExplainerScene(Scene):
             # thousands of units tall, and _fit then shrinks the axes to a
             # sliver. Restrict the plot domain to where the curve stays
             # within the visible y-range.
-            x_min, x_max = float(x_range[0]), float(x_range[1])
             y_min, y_max = float(y_range[0]), float(y_range[1])
             margin = 0.05 * (y_max - y_min)
             samples = 256
@@ -514,13 +691,42 @@ class MathExplainerScene(Scene):
                 [min(visible), max(visible)] if len(visible) >= 2 else [x_min, x_max]
             )
             graph = axes.plot(fn, x_range=plot_range, color=self.accent)
-            group.add(graph)
+        else:
+            graph = None
+            plot_range = [x_min, x_max]
+
+        label_mob = None
         label = segment.get("label")
         if label:
-            text = Text(str(label), color=self.accent, font_size=36)
-            text.next_to(axes, UP)
-            group.add(text)
-        return self._fit(group)
+            label_mob = Text(str(label), color=self.accent, font_size=36)
+            label_mob.next_to(axes, UP)
+
+        group = VGroup(axes)
+        if label_mob is not None:
+            group.add(label_mob)
+        group = self._fit(group)
+        group.plot_parts = {
+            "axes": axes,
+            "graph": graph,
+            "label": label_mob,
+            "plot_range": plot_range,
+        }
+        return group
+
+    def _animate_axes_plot(
+        self, segment: dict[str, Any], group: VGroup, budget: float
+    ) -> float:
+        parts = getattr(group, "plot_parts", None) or {}
+        graph = parts.get("graph")
+        consumed = 0.0
+        if graph is not None and budget >= 1.0:
+            draw_t = min(1.8, budget * 0.35)
+            self.play(Create(graph), run_time=draw_t)
+            group.add(graph)
+            consumed += draw_t
+        if budget - consumed > 0.05:
+            consumed += self._animate_hold(group, segment, "axes_plot", budget - consumed)
+        return consumed
 
     def _side_lengths(self, segment: dict[str, Any]) -> tuple[float, float]:
         a = float(segment.get("side_a") or segment.get("a") or 3)
@@ -701,14 +907,17 @@ class MathExplainerScene(Scene):
         scene scheduler keeps segment starts aligned with the narration.
         """
         parts = getattr(group, "transform_parts", None)
-        if not parts or budget < 2.5:
-            return 0.0
+        if not parts:
+            return self._idle_pulses(group, budget)
+        if budget < 2.5:
+            return self._idle_pulses(group, budget)
         consumed = 0.0
 
-        pause = min(0.8, budget * 0.15)
+        pause = min(0.5, budget * 0.12)
         if pause > 0:
-            self.wait(pause)
             consumed += pause
+            if pause > 0.05:
+                self.wait(pause)
 
         move_time = min(1.3, (budget - consumed) * 0.3)
         for src_key, dst_key in (("sq_a", "strip_a"), ("sq_b", "strip_b")):
@@ -730,6 +939,8 @@ class MathExplainerScene(Scene):
         if budget - consumed >= 0.8:
             self.play(summary.animate.set_opacity(1.0), run_time=0.8)
             consumed += 0.8
+        if budget - consumed > 0.05:
+            consumed += self._idle_pulses(group, budget - consumed)
         return consumed
 
     def _area_grid(self, segment: dict[str, Any]) -> VGroup:
@@ -737,13 +948,13 @@ class MathExplainerScene(Scene):
         n = int(segment.get("side") or segment.get("side_a") or 3)
         n = max(2, min(n, 6))
         cell = 0.48 * (_portrait_scale() / 1.75)
-        grid = VGroup()
+        cells = VGroup()
         for row in range(n):
             for col in range(n):
                 sq = Square(
                     side_length=cell,
                     color=self.accent,
-                    fill_opacity=0.35,
+                    fill_opacity=0.0,
                     stroke_width=1.5,
                 )
                 sq.move_to(
@@ -751,7 +962,7 @@ class MathExplainerScene(Scene):
                     + (col - (n - 1) / 2) * cell * RIGHT
                     + (row - (n - 1) / 2) * cell * UP
                 )
-                grid.add(sq)
+                cells.add(sq)
         area = n * n
         label = Text(
             f"{n} × {n}  area = {area}",
@@ -759,14 +970,252 @@ class MathExplainerScene(Scene):
             font_size=44,
             weight="BOLD",
         )
-        label.next_to(grid, DOWN, buff=0.45)
-        group = VGroup(grid, label)
+        label.next_to(cells, DOWN, buff=0.45)
+        group = VGroup(cells, label)
+        shell = None
         title = segment.get("title") or segment.get("caption")
         if title:
-            header = Text(str(title), color=self.accent, font_size=38)
-            header.next_to(group, UP, buff=0.5)
-            group.add(header)
-        return self._fit(group)
+            shell = Text(str(title), color=self.accent, font_size=38)
+            shell.next_to(group, UP, buff=0.5)
+            group.add(shell)
+        group = self._fit(group)
+        group.grid_shell = shell
+        group.grid_cells = list(cells)
+        return group
+
+    def _animate_area_grid(
+        self, segment: dict[str, Any], group: VGroup, budget: float
+    ) -> float:
+        cells = getattr(group, "grid_cells", None) or []
+        if not cells:
+            return self._idle_pulses(group, budget)
+        consumed = 0.0
+        per_cell = min(0.35, max(0.12, budget / max(1, len(cells) + 1)))
+        for cell in cells:
+            if consumed + per_cell > budget:
+                break
+            self.play(
+                cell.animate.set_fill(self.accent, opacity=0.45),
+                run_time=per_cell,
+            )
+            consumed += per_cell
+        if budget - consumed > 0.05:
+            consumed += self._idle_pulses(group, budget - consumed)
+        return consumed
+
+    def _counter_doubling(self, segment: dict[str, Any]) -> VGroup:
+        start = float(segment.get("start_value") or 2)
+        count = int(segment.get("count") or 4)
+        end_value = segment.get("end_value")
+        if end_value is not None:
+            end = float(end_value)
+            count = max(1, min(8, int(round(math.log(end / max(start, 1), 2)))))
+        title = segment.get("title")
+        unit = str(segment.get("label") or "")
+        shell = None
+        if title:
+            shell = Text(str(title), color=self.accent, weight="BOLD", font_size=44)
+        value_text = Text(
+            self._format_count(start),
+            color=self.text_color,
+            font_size=72,
+            weight="BOLD",
+        )
+        unit_text = Text(unit, color=self.text_color, font_size=36) if unit else None
+        group = VGroup(value_text)
+        if unit_text is not None:
+            unit_text.next_to(value_text, DOWN, buff=0.35)
+            group.add(unit_text)
+        if shell is not None:
+            shell.next_to(group, UP, buff=0.55)
+            group = VGroup(shell, group)
+        group = self._fit(group)
+        group.anim_shell = shell
+        group.counter_parts = {
+            "value_text": value_text,
+            "start": start,
+            "count": count,
+        }
+        return group
+
+    @staticmethod
+    def _format_count(value: float) -> str:
+        if value >= 1_000_000:
+            return f"{value / 1_000_000:.1f}M".replace(".0M", "M")
+        if value >= 1_000:
+            return f"{int(value):,}" if value == int(value) else f"{value:,.0f}"
+        if value == int(value):
+            return str(int(value))
+        return f"{value:.1f}"
+
+    def _animate_counter_doubling(
+        self, segment: dict[str, Any], group: VGroup, budget: float
+    ) -> float:
+        parts = getattr(group, "counter_parts", None) or {}
+        value_text = parts.get("value_text")
+        if value_text is None:
+            return self._idle_pulses(group, budget)
+        start = float(parts.get("start") or 2)
+        count = int(parts.get("count") or 4)
+        consumed = 0.0
+        per_step = min(1.1, max(0.45, budget / max(1, count + 1)))
+        current = start
+        for _ in range(count):
+            if consumed + per_step > budget:
+                break
+            current *= 2
+            new_text = Text(
+                self._format_count(current),
+                color=self.text_color,
+                font_size=72,
+                weight="BOLD",
+            )
+            new_text.move_to(value_text.get_center())
+            self.play(Transform(value_text, new_text), run_time=per_step * 0.75)
+            consumed += per_step * 0.75
+            pulse_t = min(0.25, per_step * 0.25, budget - consumed)
+            if pulse_t > 0.08:
+                self.play(
+                    Indicate(value_text, scale_factor=1.08, color=self.accent),
+                    run_time=pulse_t,
+                )
+                consumed += pulse_t
+        if budget - consumed > 0.05:
+            consumed += self._idle_pulses(group, budget - consumed)
+        return consumed
+
+    def _growth_bars(self, segment: dict[str, Any]) -> VGroup:
+        values = segment.get("values") or [2, 8, 32, 128]
+        values = [max(0.1, float(v)) for v in values]
+        labels = segment.get("labels") or segment.get("points") or [
+            f"#{i + 1}" for i in range(len(values))
+        ]
+        labels = [str(lbl) for lbl in labels[: len(values)]]
+        max_val = max(values)
+        bar_width = 0.55
+        bars = VGroup()
+        bar_labels = VGroup()
+        for val, lbl in zip(values, labels):
+            height = 0.25 + 2.2 * (math.log10(val + 1) / math.log10(max_val + 1))
+            rect = Rectangle(
+                width=bar_width,
+                height=0.05,
+                color=self.accent,
+                fill_opacity=0.5,
+                stroke_width=2,
+            )
+            target = Rectangle(
+                width=bar_width,
+                height=height,
+                color=self.accent,
+                fill_opacity=0.5,
+                stroke_width=2,
+            )
+            rect.bar_target = target
+            caption = Text(lbl, color=self.text_color, font_size=28)
+            caption.next_to(rect, DOWN, buff=0.2)
+            bar_labels.add(caption)
+            bars.add(rect)
+        bars.arrange(RIGHT, buff=0.35)
+        bar_labels.arrange(RIGHT, buff=0.35)
+        for rect, caption in zip(bars, bar_labels):
+            caption.next_to(rect, DOWN, buff=0.2)
+        group = VGroup(bars, bar_labels)
+        shell = None
+        title = segment.get("title")
+        if title:
+            shell = Text(str(title), color=self.accent, weight="BOLD", font_size=42)
+            shell.next_to(group, UP, buff=0.55)
+            group = VGroup(shell, group)
+        group = self._fit(group)
+        group.anim_shell = shell
+        group.bar_items = list(bars)
+        return group
+
+    def _animate_growth_bars(
+        self, segment: dict[str, Any], group: VGroup, budget: float
+    ) -> float:
+        bars = getattr(group, "bar_items", None) or []
+        if not bars:
+            return self._idle_pulses(group, budget)
+        consumed = 0.0
+        per_bar = min(1.0, max(0.4, budget / max(1, len(bars) + 1)))
+        for rect in bars:
+            if consumed + per_bar > budget:
+                break
+            target = rect.bar_target
+            target.move_to(rect.get_bottom(), aligned_edge=DOWN)
+            self.play(Transform(rect, target), run_time=per_bar * 0.85)
+            consumed += per_bar * 0.85
+            pulse_t = min(0.2, per_bar * 0.15, budget - consumed)
+            if pulse_t > 0.06:
+                self.play(
+                    Indicate(rect, scale_factor=1.05, color=self.accent),
+                    run_time=pulse_t,
+                )
+                consumed += pulse_t
+        if budget - consumed > 0.05:
+            consumed += self._idle_pulses(group, budget - consumed)
+        return consumed
+
+    def _value_pop(self, segment: dict[str, Any]) -> VGroup:
+        title = segment.get("title")
+        caption = segment.get("caption") or (
+            (segment.get("points") or [""])[0] if segment.get("points") else "—"
+        )
+        shell = None
+        if title:
+            shell = Text(str(title), color=self.accent, weight="BOLD", font_size=44)
+        pop_text = Text(str(caption), color=self.text_color, font_size=64, weight="BOLD")
+        pop_text.set_opacity(0)
+        pop_text.scale(0.3)
+        group = VGroup(pop_text)
+        if shell is not None:
+            shell.next_to(pop_text, UP, buff=0.55)
+            group = VGroup(shell, pop_text)
+        group = self._fit(group)
+        group.anim_shell = shell
+        group.pop_target = pop_text
+        return group
+
+    def _animate_value_pop(
+        self, segment: dict[str, Any], group: VGroup, budget: float
+    ) -> float:
+        target = getattr(group, "pop_target", None)
+        if target is None:
+            return self._idle_pulses(group, budget)
+        consumed = 0.0
+        pop_t = min(0.9, budget * 0.35)
+        self.play(
+            target.animate.set_opacity(1.0).scale(1.0 / 0.3),
+            run_time=pop_t,
+        )
+        consumed += pop_t
+        if budget - consumed > 0.05:
+            consumed += self._idle_pulses(group, budget - consumed)
+        return consumed
+
+    def _animate_number_line(
+        self, segment: dict[str, Any], group: VGroup, budget: float
+    ) -> float:
+        line = group[0] if len(group) > 0 else group
+        consumed = 0.0
+        x_range = segment.get("x_range") or [0, 10]
+        lo, hi = float(x_range[0]), float(x_range[1])
+        dot = Dot(color=self.accent, radius=0.08)
+        dot.move_to(line.n2p(lo))
+        self.add(dot)
+        sweep_t = min(2.0, budget * 0.5)
+        if sweep_t > 0.3:
+            self.play(
+                dot.animate.move_to(line.n2p(hi)),
+                run_time=sweep_t,
+            )
+            consumed += sweep_t
+        self.remove(dot)
+        if budget - consumed > 0.05:
+            consumed += self._idle_pulses(group, budget - consumed)
+        return consumed
 
     def _number_line(self, segment: dict[str, Any]) -> VGroup:
         x_range = segment.get("x_range") or [0, 10]

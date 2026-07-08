@@ -39,6 +39,9 @@ _SEGMENT_TYPES = {
     "squares_transform",
     "area_grid",
     "highlight",
+    "counter_doubling",
+    "growth_bars",
+    "value_pop",
 }
 # Hard ceiling for a single render so a bad spec cannot hang the worker.
 _RENDER_TIMEOUT_SECONDS = 600
@@ -52,7 +55,14 @@ _GEOMETRY_TYPES = {
 }
 # Templates that read as generic filler on a geometry topic. When the LLM has
 # committed to a geometry story, these only break the visual narrative.
-_ABSTRACT_TYPES = {"number_line", "axes_plot", "bullet_points"}
+_ABSTRACT_TYPES = {
+    "number_line",
+    "axes_plot",
+    "bullet_points",
+    "counter_doubling",
+    "growth_bars",
+    "value_pop",
+}
 
 
 class Segment(BaseModel):
@@ -70,6 +80,11 @@ class Segment(BaseModel):
     side_a: Optional[float] = None
     side_b: Optional[float] = None
     side: Optional[int] = None
+    values: Optional[List[float]] = None
+    labels: Optional[List[str]] = None
+    start_value: Optional[float] = None
+    end_value: Optional[float] = None
+    count: Optional[int] = None
     # Absolute second (from video start) when this visual should appear and how
     # long it stays on screen. Both are filled by apply_subtitle_timing.
     start: Optional[float] = None
@@ -401,7 +416,9 @@ def apply_subtitle_timing(
     # starts at 0 regardless of when its narration line lands.
     n = len(starts)
     starts[0] = 0.0
-    min_slot = 2.0
+    # Micro-segment specs (10+) need shorter minimum gaps so visuals can
+    # track individual narration beats instead of freezing for 2s+.
+    min_slot = 1.0 if n >= 10 else 1.5 if n >= 7 else 2.0
     for i in range(1, n):
         lower = starts[i - 1] + min_slot
         # Leave enough room for every remaining segment to get min_slot.

@@ -151,6 +151,82 @@ class ValidateOrDefaultTest(unittest.TestCase):
             ["1.1\\times10^{12}", "a \\neq b"],
         )
 
+    def test_new_animated_segment_types_accepted(self):
+        raw = {
+            "segments": [
+                {
+                    "type": "counter_doubling",
+                    "start_value": 2,
+                    "count": 4,
+                    "label": "plants",
+                },
+                {
+                    "type": "growth_bars",
+                    "values": [2, 20, 200],
+                    "labels": ["Day 1", "Day 10", "Day 20"],
+                },
+                {"type": "value_pop", "caption": "1,200 plants"},
+            ]
+        }
+        spec = validate_or_default(raw, "Exponential")
+        types = [s.type for s in spec.segments]
+        self.assertEqual(types, ["counter_doubling", "growth_bars", "value_pop"])
+        self.assertEqual(spec.segments[0].start_value, 2)
+        self.assertEqual(spec.segments[1].values, [2, 20, 200])
+
+    def test_abstract_growth_segments_dropped_from_geometry_spec(self):
+        raw = {
+            "segments": [
+                {"type": "right_triangle", "side_a": 3, "side_b": 4},
+                {"type": "squares_on_sides", "side_a": 3, "side_b": 4},
+                {"type": "counter_doubling", "start_value": 2},
+                {"type": "growth_bars", "values": [1, 2, 4]},
+                {"type": "value_pop", "caption": "25"},
+                {"type": "area_grid", "side": 5},
+            ]
+        }
+        spec = validate_or_default(raw, "Pythagoras")
+        types = [s.type for s in spec.segments]
+        self.assertEqual(
+            types,
+            ["right_triangle", "squares_on_sides", "area_grid"],
+        )
+
+    def test_micro_segment_timing_allows_shorter_gaps(self):
+        srt_lines = []
+        t = 0.0
+        for i in range(12):
+            start = t
+            end = t + 1.0
+            srt_lines.append(
+                f"{i + 1}\n"
+                f"00:00:{int(start):02d},{int((start % 1) * 1000):03d} --> "
+                f"00:00:{int(end):02d},{int((end % 1) * 1000):03d}\n"
+                f"beat number {i + 1}\n"
+            )
+            t += 1.0
+        handle = tempfile.NamedTemporaryFile("w", suffix=".srt", delete=False)
+        handle.write("\n".join(srt_lines))
+        handle.close()
+        try:
+            segments = [
+                Segment(type="value_pop", caption=f"Beat {i}", narration_hint=f"beat number {i + 1}")
+                for i in range(12)
+            ]
+            timed = apply_subtitle_timing(
+                SceneSpec(segments=segments),
+                subtitle_path=handle.name,
+                video_script="",
+                total_duration=12.0,
+            )
+            gaps = [
+                timed.segments[i + 1].start - timed.segments[i].start
+                for i in range(len(timed.segments) - 1)
+            ]
+            self.assertTrue(all(g >= 1.0 for g in gaps))
+        finally:
+            os.unlink(handle.name)
+
     def test_abstract_segments_kept_without_geometry(self):
         raw = {
             "segments": [
