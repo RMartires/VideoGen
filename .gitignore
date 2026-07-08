@@ -37,3 +37,7 @@ streamlit.log
 .codegraph
 /docs/superpowers
 .understand-anything
+
+# Local 3b1b reference clones (not part of this project; use pip manim package)
+/manim/
+/videos/

@@ -84,6 +84,9 @@ class VideoParams(BaseModel):
     video_materials: Optional[List[MaterialInfo]] = (
         None  # Materials used to generate the video
     )
+    # Optional styling overrides for video_source="manim" (math-explainer visuals).
+    manim_accent_color: Optional[str] = None
+    manim_background_color: Optional[str] = None
     
     custom_audio_file: Optional[str] = None  # Custom audio file path, will ignore TTS and can still use Whisper subtitles
     video_language: Optional[str] = ""  # auto detect
@@ -108,7 +111,7 @@ class VideoParams(BaseModel):
     stroke_width: float = 1.5
     n_threads: Optional[int] = 2
     paragraph_number: int = Field(default=1, ge=1, le=10)
-    video_script_prompt: str = Field(default="", max_length=2000)
+    video_script_prompt: str = Field(default="", max_length=3500)
     custom_system_prompt: str = Field(default="", max_length=8000)
 
 
@@ -159,7 +162,7 @@ class VideoScriptParams:
     video_subject: Optional[str] = "春天的花海"
     video_language: Optional[str] = ""
     paragraph_number: int = Field(default=1, ge=1, le=10)
-    video_script_prompt: str = Field(default="", max_length=2000)
+    video_script_prompt: str = Field(default="", max_length=3500)
     custom_system_prompt: str = Field(default="", max_length=8000)
 
 

@@ -10,7 +10,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from app.services import task as tm
-from app.models.schema import MaterialInfo, VideoParams
+from app.models.schema import MaterialInfo, VideoConcatMode, VideoParams
 from app.utils import utils
 
 resources_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "resources")
@@ -297,6 +297,47 @@ class TestTaskService(unittest.TestCase):
         )
         result = tm.start(task_id=task_id, params=params)
         print(result)
+
+
+class TestManimVideoCombine(unittest.TestCase):
+    def test_manim_skips_combine_videos_truncation(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            task_id = "manim-task"
+            task_path = Path(tmp_dir) / task_id
+            task_path.mkdir(parents=True)
+            manim_clip = task_path / "manim_scene.mp4"
+            manim_clip.write_bytes(b"full-manim-render")
+            audio_file = task_path / "audio.mp3"
+            audio_file.write_bytes(b"audio")
+
+            params = VideoParams(
+                video_subject="Pythagorean theorem",
+                video_source="manim",
+                video_aspect="9:16",
+                video_clip_duration=5,
+                match_materials_to_script=True,
+                video_count=1,
+                voice_name="en-US-AriaNeural-Female",
+            )
+
+            with patch("app.services.task.utils.task_dir", return_value=str(task_path)), patch(
+                "app.services.task.video.combine_videos"
+            ) as mock_combine, patch(
+                "app.services.task.video.generate_video"
+            ) as mock_generate:
+                mock_generate.return_value = None
+                tm.generate_final_videos(
+                    task_id,
+                    params,
+                    [str(manim_clip)],
+                    str(audio_file),
+                    "",
+                )
+
+            mock_combine.assert_not_called()
+            combined = task_path / "combined-1.mp4"
+            self.assertTrue(combined.exists())
+            self.assertEqual(combined.read_bytes(), b"full-manim-render")
     
 
 if __name__ == "__main__":

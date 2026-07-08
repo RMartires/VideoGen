@@ -27,6 +27,10 @@ from app.config import config
 from app.utils import utils
 
 _DEFAULT_EDGE_TTS_TIMEOUT_SECONDS = 30.0
+_CHATTERBOX_PARALINGUISTIC_TAG_PATTERN = re.compile(
+    r"\[(?:laugh|chuckle|sigh|gasp|groan|cough|clear throat|sniff|shush)\]",
+    re.IGNORECASE,
+)
 _MIMO_DEFAULT_BASE_URL = "https://api.xiaomimimo.com/v1"
 _MIMO_DEFAULT_TTS_MODEL = "mimo-v2.5-tts"
 NO_VOICE_NAME = "no-voice"
@@ -254,6 +258,14 @@ def is_elevenlabs_voice(voice_name: str) -> bool:
 
 def is_chatterbox_voice(voice_name: str) -> bool:
     return (voice_name or "").startswith("chatterbox:")
+
+
+def strip_chatterbox_tags(text: str) -> str:
+    """Remove Turbo paralinguistic tags from text shown in subtitles."""
+    cleaned = _CHATTERBOX_PARALINGUISTIC_TAG_PATTERN.sub("", text or "")
+    cleaned = re.sub(r"\s{2,}", " ", cleaned)
+    cleaned = re.sub(r"\s+([,.!?])", r"\1", cleaned)
+    return cleaned.strip()
 
 
 def is_no_voice(voice_name: str | None) -> bool:
@@ -1318,6 +1330,49 @@ def elevenlabs_tts(
     return None
 
 
+def _chatterbox_synthesize_to_file(
+    *,
+    text: str,
+    voice: str,
+    voice_file: str,
+    voice_rate: float,
+    model_id: str,
+    url: str,
+    headers: dict,
+) -> float | None:
+    """Single Chatterbox /audio/speech request; returns duration seconds or None."""
+    payload = {
+        "model": model_id,
+        "input": text,
+        "voice": voice,
+        "response_format": "mp3",
+        "speed": max(0.25, min(4.0, float(voice_rate or 1.0))),
+    }
+
+    for attempt in range(3):
+        try:
+            ensure_file_path_exists(voice_file)
+            response = requests.post(url, json=payload, headers=headers, timeout=120)
+            if response.status_code != 200:
+                logger.error(
+                    "chatterbox tts failed with status "
+                    f"{response.status_code}: {response.text[:200]}"
+                )
+                continue
+
+            with open(voice_file, "wb") as handle:
+                handle.write(response.content)
+
+            audio_clip = AudioFileClip(voice_file)
+            duration = audio_clip.duration
+            audio_clip.close()
+            return duration
+        except Exception as exc:
+            logger.error(f"chatterbox tts failed: {str(exc)}")
+
+    return None
+
+
 def chatterbox_tts(
     text: str,
     voice: str,
@@ -1339,6 +1394,8 @@ def chatterbox_tts(
     subtitle path falls back to the full-text SubMaker. For tighter subtitle
     sync set ``subtitle_provider = "whisper"``.
     """
+    del voice_volume  # OpenAI /audio/speech has no volume field; kept for API parity.
+
     text = (text or "").strip()
     if not text:
         logger.error("Chatterbox TTS text is empty")
@@ -1359,50 +1416,27 @@ def chatterbox_tts(
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
-    payload = {
-        "model": model_id,
-        "input": text,
-        "voice": voice,
-        "response_format": "mp3",
-        # OpenAI speech API accepts speed 0.25-4.0; MoneyPrinterTurbo's rate is a
-        # 1.0-centred multiplier, so it maps directly (clamped to the valid range).
-        "speed": max(0.25, min(4.0, float(voice_rate or 1.0))),
-    }
-    # voice_volume is accepted for parity with the other TTS providers but is
-    # intentionally not sent: the OpenAI /audio/speech contract has no volume
-    # field, so Chatterbox servers ignore it. Adjust loudness via voice_rate
-    # (speed) or in post-processing instead.
 
-    for i in range(3):
-        try:
-            logger.info(f"start chatterbox tts, voice: {voice}, try: {i + 1}")
-            ensure_file_path_exists(voice_file)
+    logger.info(f"start chatterbox tts, voice: {voice}")
+    audio_duration = _chatterbox_synthesize_to_file(
+        text=text,
+        voice=voice,
+        voice_file=voice_file,
+        voice_rate=voice_rate,
+        model_id=model_id,
+        url=url,
+        headers=headers,
+    )
+    if audio_duration is None:
+        return None
 
-            response = requests.post(url, json=payload, headers=headers, timeout=120)
-            if response.status_code != 200:
-                logger.error(
-                    f"chatterbox tts failed with status {response.status_code}: {response.text[:200]}"
-                )
-                continue
-
-            with open(voice_file, "wb") as f:
-                f.write(response.content)
-
-            audio_clip = AudioFileClip(voice_file)
-            audio_duration = audio_clip.duration
-            audio_clip.close()
-
-            sub_maker = ensure_legacy_submaker_fields(SubMaker())
-            logger.success(f"chatterbox tts succeeded: {voice_file}")
-            return populate_legacy_submaker_with_full_text(
-                sub_maker=sub_maker,
-                text=text,
-                audio_duration_seconds=audio_duration,
-            )
-        except Exception as e:
-            logger.error(f"chatterbox tts failed: {str(e)}")
-
-    return None
+    sub_maker = ensure_legacy_submaker_fields(SubMaker())
+    logger.success(f"chatterbox tts succeeded: {voice_file}")
+    return populate_legacy_submaker_with_full_text(
+        sub_maker=sub_maker,
+        text=strip_chatterbox_tags(text),
+        audio_duration_seconds=audio_duration,
+    )
 
 
 def _format_text(text: str) -> str:

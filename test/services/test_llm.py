@@ -68,6 +68,48 @@ class TestScriptPromptOptions(unittest.TestCase):
         self.assertIn("# Additional User Requirements:", prompt)
         self.assertIn("语气轻松，面向程序员", prompt)
 
+    def test_clean_script_response_preserves_chatterbox_tags(self):
+        raw = (
+            "[clear throat] So here's the thing. [chuckle] Forty percent is huge. "
+            "[Narrator] (pause) *laughs*"
+        )
+        cleaned = llm._clean_script_response(raw)
+
+        self.assertIn("[clear throat]", cleaned)
+        self.assertIn("[chuckle]", cleaned)
+        self.assertNotIn("[Narrator]", cleaned)
+        self.assertNotIn("(pause)", cleaned)
+        self.assertNotIn("*", cleaned)
+
+    def test_generate_script_preserves_chatterbox_tags(self):
+        with patch.object(
+            llm,
+            "_generate_response",
+            return_value="[sigh] Look, this is important. [chuckle] Right?",
+        ):
+            result = llm.generate_script(
+                video_subject="Resume tips",
+                language="English",
+                paragraph_number=1,
+                video_script_prompt=llm.build_reel_script_prompt(chatterbox=True),
+            )
+
+        self.assertIn("[sigh]", result)
+        self.assertIn("[chuckle]", result)
+
+    def test_build_reel_script_prompt_includes_hook_guidelines(self):
+        prompt = llm.build_reel_script_prompt(chatterbox=False)
+        self.assertIn("first 3-5 seconds", prompt)
+        self.assertIn("Mistake/contrarian", prompt)
+        self.assertNotIn("Chatterbox-Turbo", prompt)
+
+    def test_build_reel_script_prompt_combines_hook_and_chatterbox(self):
+        prompt = llm.build_reel_script_prompt(chatterbox=True)
+        self.assertIn("first 3-5 seconds", prompt)
+        self.assertIn("HOOK VOICE", prompt)
+        self.assertIn("Chatterbox-Turbo", prompt)
+        self.assertIn("[gasp]", prompt)
+
     def test_custom_system_prompt_keeps_runtime_context(self):
         """
         自定义 system prompt 会替换默认脚本规则，但视频主题、语言、段落数

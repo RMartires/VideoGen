@@ -314,6 +314,34 @@ uv run python cli.py \
   --stop-at video
 ```
 
+## Math Explainer Videos (Manim) 🧮
+
+Set `video_source = "manim"` to generate short (30-60s) math-explainer visuals with
+[Manim Community Edition](https://www.manim.community/) instead of stock footage. The
+LLM writes the narration and a validated JSON "scene spec" (titles, equations, steps,
+plots); a fixed library of parameterized templates renders it — no arbitrary code is
+executed. The TTS narration, subtitles, and BGM overlay stages are unchanged.
+
+Manim is an optional dependency (heavy). Install it and its system requirements:
+
+```shell
+# Python package
+uv sync --extra manim   # or: pip install "manim>=0.18.1"
+
+# System deps (macOS example)
+brew install ffmpeg cairo pango
+# Optional: a LaTeX distribution enables MathTex equation rendering.
+# Without LaTeX, equations fall back to plain unicode Text.
+brew install --cask mactex-no-gui
+```
+
+Then generate math reels via the CLI pipeline:
+
+```shell
+uv run python pipeline.py --video-source manim --style math-explainer \
+  --domain "Calculus intuition" --count 3
+```
+
 ## Voice Synthesis 🗣
 
 A list of all supported voices can be viewed here: [Voice List](./docs/voice-list.txt)

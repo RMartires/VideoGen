@@ -534,6 +534,13 @@ class TestVoiceService(unittest.TestCase):
         with patch.object(vs.config, "chatterbox", {}):
             self.assertEqual(vs.get_chatterbox_voices(), ["chatterbox:default-Female"])
 
+    def test_strip_chatterbox_tags_removes_paralinguistic_markers(self):
+        raw = "[clear throat] So here's the thing. [chuckle] Forty percent is huge."
+        self.assertEqual(
+            vs.strip_chatterbox_tags(raw),
+            "So here's the thing. Forty percent is huge.",
+        )
+
     def test_chatterbox_tts_posts_to_openai_compatible_endpoint(self):
         """Success path: POST /audio/speech, write audio, return legacy SubMaker."""
 

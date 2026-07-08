@@ -43,6 +43,13 @@ g4f = [
 twelvelabs = [
     "twelvelabs>=1.2.8",
 ]
+# Optional Manim Community Edition renderer, only needed when
+# `video_source = "manim"` (math-explainer visuals). Install with
+# `uv sync --extra manim`. Requires system deps: FFmpeg, Cairo, Pango, and
+# optionally a LaTeX distribution for MathTex equation rendering.
+manim = [
+    "manim>=0.18.1",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]

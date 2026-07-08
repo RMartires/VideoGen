@@ -904,6 +904,7 @@ with middle_panel:
             (tr("Pexels"), "pexels"),
             (tr("Pixabay"), "pixabay"),
             (tr("Coverr"), "coverr"),
+            (tr("Manim (Math)"), "manim"),
             (tr("Local file"), "local"),
             (tr("TikTok"), "douyin"),
             (tr("Bilibili"), "bilibili"),
@@ -1691,7 +1692,7 @@ if start_button:
         scroll_to_bottom()
         st.stop()
 
-    if params.video_source not in ["pexels", "pixabay", "coverr", "local"]:
+    if params.video_source not in ["pexels", "pixabay", "coverr", "local", "manim"]:
         st.error(tr("Please Select a Valid Video Source"))
         scroll_to_bottom()
         st.stop()

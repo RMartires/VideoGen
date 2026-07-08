@@ -1,6 +1,7 @@
 import math
 import os.path
 import re
+import shutil
 from os import path
 
 from loguru import logger
@@ -8,7 +9,16 @@ from loguru import logger
 from app.config import config
 from app.models import const
 from app.models.schema import VideoConcatMode, VideoParams
-from app.services import llm, material, subtitle, twelvelabs, video, voice, upload_post
+from app.services import (
+    llm,
+    manim_video,
+    material,
+    subtitle,
+    twelvelabs,
+    video,
+    voice,
+    upload_post,
+)
 from app.services import state as sm
 from app.utils import file_security, utils
 
@@ -197,6 +207,10 @@ def generate_subtitle(task_id, params, video_script, sub_maker, audio_file):
     if not params.subtitle_enabled:
         return ""
 
+    subtitle_script = video_script
+    if voice.is_chatterbox_voice(params.voice_name):
+        subtitle_script = voice.strip_chatterbox_tags(video_script)
+
     subtitle_path = path.join(utils.task_dir(task_id), "subtitle.srt")
     subtitle_provider = config.app.get("subtitle_provider", "edge").strip().lower()
     logger.info(f"\n\n## generating subtitle, provider: {subtitle_provider}")
@@ -214,7 +228,7 @@ def generate_subtitle(task_id, params, video_script, sub_maker, audio_file):
     subtitle_fallback = False
     if subtitle_provider == "edge":
         voice.create_subtitle(
-            text=video_script, sub_maker=sub_maker, subtitle_file=subtitle_path
+            text=subtitle_script, sub_maker=sub_maker, subtitle_file=subtitle_path
         )
         if not os.path.exists(subtitle_path):
             subtitle_fallback = True
@@ -223,7 +237,7 @@ def generate_subtitle(task_id, params, video_script, sub_maker, audio_file):
     if subtitle_provider == "whisper" or subtitle_fallback:
         subtitle.create(audio_file=audio_file, subtitle_file=subtitle_path)
         logger.info("\n\n## correcting subtitle")
-        subtitle.correct(subtitle_file=subtitle_path, video_script=video_script)
+        subtitle.correct(subtitle_file=subtitle_path, video_script=subtitle_script)
 
     subtitle_lines = subtitle.file_to_subtitles(subtitle_path)
     if not subtitle_lines:
@@ -233,7 +247,7 @@ def generate_subtitle(task_id, params, video_script, sub_maker, audio_file):
     return subtitle_path
 
 
-def get_video_materials(task_id, params, video_terms, audio_duration):
+def get_video_materials(task_id, params, video_terms, audio_duration, video_script=""):
     if params.video_source == "local":
         logger.info("\n\n## preprocess local materials")
         materials = video.preprocess_video(
@@ -246,6 +260,31 @@ def get_video_materials(task_id, params, video_terms, audio_duration):
             )
             return None
         return [material_info.url for material_info in materials]
+    elif params.video_source == "manim":
+        logger.info("\n\n## rendering manim math-explainer scene")
+        raw_spec = llm.generate_manim_spec(
+            video_subject=params.video_subject,
+            video_script=video_script,
+            duration=audio_duration,
+        )
+        spec = manim_video.validate_or_default(raw_spec, params.video_subject)
+        # 允许通过参数覆盖模板配色，未设置时沿用 spec/模板默认值。
+        if getattr(params, "manim_accent_color", None):
+            spec.accent_color = params.manim_accent_color
+        if getattr(params, "manim_background_color", None):
+            spec.background_color = params.manim_background_color
+        try:
+            scene_path = manim_video.render_manim_video(
+                task_id=task_id,
+                spec=spec,
+                video_aspect=params.video_aspect,
+                duration=audio_duration,
+            )
+        except Exception as exc:
+            sm.state.update_task(task_id, state=const.TASK_STATE_FAILED)
+            logger.error(f"failed to render manim scene: {exc}")
+            return None
+        return [scene_path]
     else:
         logger.info(f"\n\n## downloading videos from {params.video_source}")
         # 顺序匹配模式只在用户显式开启时生效。这里强制素材下载按关键词顺序
@@ -280,7 +319,8 @@ def generate_final_videos(
     combined_video_paths = []
     # 多视频生成默认会打散素材以增加差异；但“按文案顺序匹配素材”追求的是
     # 时间线稳定性和可解释性，所以开启后所有输出都使用顺序拼接。
-    if params.match_materials_to_script:
+    # manim 讲解视频的画面本身就有先后逻辑，必须顺序拼接，否则会打乱讲解步骤。
+    if params.match_materials_to_script or params.video_source == "manim":
         video_concat_mode = VideoConcatMode.sequential
     elif params.video_count == 1:
         video_concat_mode = params.video_concat_mode
@@ -295,16 +335,22 @@ def generate_final_videos(
             utils.task_dir(task_id), f"combined-{index}.mp4"
         )
         logger.info(f"\n\n## combining video: {index} => {combined_video_path}")
-        video.combine_videos(
-            combined_video_path=combined_video_path,
-            video_paths=downloaded_videos,
-            audio_file=audio_file,
-            video_aspect=params.video_aspect,
-            video_concat_mode=video_concat_mode,
-            video_transition_mode=video_transition_mode,
-            max_clip_duration=params.video_clip_duration,
-            threads=params.n_threads,
-        )
+        # Manim scenes are timed to the narration; combine_videos would truncate
+        # them to max_clip_duration (often 5s) and loop — keep the full render.
+        if params.video_source == "manim" and len(downloaded_videos) == 1:
+            logger.info("using full manim render without clip truncation or looping")
+            shutil.copyfile(downloaded_videos[0], combined_video_path)
+        else:
+            video.combine_videos(
+                combined_video_path=combined_video_path,
+                video_paths=downloaded_videos,
+                audio_file=audio_file,
+                video_aspect=params.video_aspect,
+                video_concat_mode=video_concat_mode,
+                video_transition_mode=video_transition_mode,
+                max_clip_duration=params.video_clip_duration,
+                threads=params.n_threads,
+            )
 
         _progress += 50 / params.video_count / 2
         sm.state.update_task(task_id, progress=_progress)
@@ -348,8 +394,10 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
         return {"script": video_script}
 
     # 2. Generate terms
+    # 关键词只服务于在线图库素材搜索；local 素材由用户提供，manim 则由
+    # 场景说明驱动，都不需要搜索词。
     video_terms = ""
-    if params.video_source != "local":
+    if params.video_source not in ("local", "manim"):
         video_terms = generate_terms(task_id, params, video_script)
         if not video_terms:
             sm.state.update_task(task_id, state=const.TASK_STATE_FAILED)
@@ -402,7 +450,7 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
 
     # 5. Get video materials
     downloaded_videos = get_video_materials(
-        task_id, params, video_terms, audio_duration
+        task_id, params, video_terms, audio_duration, video_script
     )
     if not downloaded_videos:
         sm.state.update_task(task_id, state=const.TASK_STATE_FAILED)

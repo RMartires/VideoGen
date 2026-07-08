@@ -15,7 +15,7 @@ _DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
 _DEPRECATED_GEMINI_MODELS = {"gemini-pro", "gemini-1.0-pro"}
 MIN_SCRIPT_PARAGRAPH_NUMBER = 1
 MAX_SCRIPT_PARAGRAPH_NUMBER = 10
-MAX_SCRIPT_PROMPT_LENGTH = 2000
+MAX_SCRIPT_PROMPT_LENGTH = 3500
 MAX_SCRIPT_SYSTEM_PROMPT_LENGTH = 8000
 _THINK_BLOCK_RE = re.compile(r"<think\b[^>]*>.*?</think>", re.IGNORECASE | re.DOTALL)
 _UNCLOSED_THINK_BLOCK_RE = re.compile(r"<think\b[^>]*>.*$", re.IGNORECASE | re.DOTALL)
@@ -34,13 +34,201 @@ Generate a script for a video, depending on the subject of the video.
 ## Constrains:
 1. the script is to be returned as a string with the specified number of paragraphs.
 2. do not under any circumstance reference this prompt in your response.
-3. get straight to the point, don't start with unnecessary things like, "welcome to this video".
+3. open with a scroll-stopping hook in the first 1-2 sentences (3-5 seconds). never start with welcome lines, throat-clearing, or generic intros like "welcome to this video" or "hey guys".
 4. you must not include any type of markdown or formatting in the script, never use a title.
 5. only return the raw content of the script.
 6. do not include "voiceover", "narrator" or similar indicators of what should be spoken at the beginning of each paragraph or line.
 7. you must not mention the prompt, or anything about the script itself. also, never talk about the amount of paragraphs or lines. just write the script.
 8. respond in the same language as the video subject.
 """.strip()
+
+CHATTERBOX_PARALINGUISTIC_TAGS = frozenset(
+    {
+        "laugh",
+        "chuckle",
+        "sigh",
+        "gasp",
+        "groan",
+        "cough",
+        "clear throat",
+        "sniff",
+        "shush",
+    }
+)
+
+REEL_HOOK_SCRIPT_PROMPT = """
+This is a 30-45 second vertical reel. The first 3-5 seconds decide whether viewers stay — Instagram and TikTok data show most swipe decisions happen by 1.5 seconds, and 50%+ must watch past 3 seconds for algorithmic reach.
+
+HOOK (first 1-2 sentences, 8-15 words, ~3-5 seconds spoken):
+- The hook is the very first thing spoken — no warm-up, no context-setting first
+- State the stake by word 5: problem, risk, surprise, or payoff immediately
+- Be specific: numbers, timeframes, job titles, or concrete details beat vague promises
+- Create an open loop the rest of the script closes — curiosity, tension, or contradiction
+- The hook must truthfully match what follows — no bait-and-switch
+
+HOOK VOICE DELIVERY (write text the TTS will read with energy):
+- Sentence 1 must sound like interrupting a scroll — urgent, confident, punchy
+- Use strong openers: Stop, Wait, Wrong, Nobody, Never, Here's, Look
+- Short words, hard consonants — zero filler words (so, basically, um) in the hook
+- End the hook line with ! or ? — never a flat period on the opening line
+- After the hook, shift to warm explainer tone — slightly slower, conversational
+
+Pick ONE hook pattern (best fit for the topic):
+1. Mistake/contrarian — "Stop doing X" / "X is killing your Y"
+2. Outcome — "This one change got me [specific result]"
+3. Curiosity gap — "The detail most people miss when [common task]"
+4. Direct address — "If you're [audience] struggling with [problem]..."
+5. Shocking stat — "[Number] percent of [group] fail at [thing]"
+6. Bold claim — "[Common belief] is wrong" (must prove it in the script)
+
+Never open with: "Hey guys", "Welcome back", "Today I want to share", "Are you tired of", "Have you ever wondered", or any throat-clearing.
+
+AFTER THE HOOK (remaining ~25-40 seconds):
+- Deliver the promised payoff fast — setup, one key insight, actionable takeaway
+- Emotional arc: hook → setup → tension → reveal → release
+- End with a clear payoff or call-to-action, not a trailing question
+""".strip()
+
+CHATTERBOX_TTS_SCRIPT_PROMPT = """
+Write the narration as spoken English for Chatterbox-Turbo TTS (30-45 second reel).
+
+Style:
+- Conversational podcast/YouTuber tone, not essay or Wikipedia
+- Mix short and medium sentences; vary length for rhythm
+- Use fillers sparingly AFTER the hook only: so, look, honestly, I mean, basically, you know
+- Use questions and exclamations for energy; commas and periods for pacing
+- Write numbers as words (forty percent, not 40%)
+
+HOOK VOICE (first sentence — Turbo reads tags and punctuation literally):
+- The hook must sound like a scroll-stopper: sharp, fast, high energy
+- Prefer [gasp] before a shocking stat or contrarian reveal — never [clear throat] or [sigh] in the hook
+- One short punchy hook line ending in ! or ?; optional [gasp] at the very start
+- Example: "[gasp] Recruiters delete your resume in six seconds!" then ease into explainer mode
+- Never open with slow tags like [clear throat] or [chuckle] — save those for the payoff
+
+Paralinguistic tags (Turbo only — 2-4 per script, mostly after the hook):
+[laugh] [chuckle] [sigh] [gasp] [groan] [cough] [clear throat] [sniff] [shush]
+
+Rules:
+- Tags lowercase in square brackets, with spaces before/after when natural
+- One tag every 2-4 sentences; never stack tags; at most one tag in the hook ([gasp] preferred)
+- No markdown, bullet points, colons, stage directions like (pause) or *laughs*
+- No speaker tags like [Narrator] or [S1]
+- End sentences with . ! or ?
+""".strip()
+
+
+def build_reel_script_prompt(*, chatterbox: bool = False) -> str:
+    """Combine reel hook guidelines with optional Chatterbox TTS rules."""
+    parts = [REEL_HOOK_SCRIPT_PROMPT]
+    if chatterbox:
+        parts.append(CHATTERBOX_TTS_SCRIPT_PROMPT)
+    return "\n\n".join(part for part in parts)
+
+
+SOULFUL_POEM_SCRIPT_PROMPT = """
+Write a soulful spoken-word poem for a 45-60 second vertical video.
+
+Tone and mood:
+- Intimate, reflective, emotionally honest — like late-night voice memo or campfire confession
+- Lyrical but plainspoken; beauty through feeling, not fancy vocabulary
+- Themes: longing, healing, memory, love, loss, hope, identity, quiet courage
+- Build emotional arc: opening image → deepening feeling → gentle turn or release at the end
+
+Structure:
+- 4-6 short stanzas as flowing prose (no line breaks in output — one continuous narration)
+- Use sensory imagery: light, rain, hands, roads, silence, breath, seasons
+- Vary rhythm: longer breathy sentences, then a short punch line
+- End with a resonant closing line that lingers — not a call-to-action
+
+Do NOT write like a reel, tutorial, or essay. No hooks, no "hey guys", no lists, no resume tips.
+No markdown, titles, or speaker labels. Return only the poem text to be spoken aloud.
+""".strip()
+
+CHATTERBOX_POEM_TTS_PROMPT = """
+Deliver as spoken English for Chatterbox-Turbo TTS — soulful, warm, unhurried.
+
+Voice delivery:
+- Soft, intimate narration — like reading to someone you trust
+- Commas and periods for natural pauses; let silence breathe between thoughts
+- One optional [sigh] or [clear throat] where emotion peaks — never [gasp] or high-energy tags
+- No exclamation marks unless truly earned; prefer gentle periods
+- Write numbers as words
+
+Paralinguistic tags (use sparingly, 1-2 total):
+[laugh] [chuckle] [sigh] [gasp] [groan] [cough] [clear throat] [sniff] [shush]
+
+Rules:
+- Tags lowercase in square brackets; never stack tags
+- No markdown, bullet points, colons, or stage directions
+- End sentences with . ! or ?
+""".strip()
+
+
+def build_soulful_poem_script_prompt(*, chatterbox: bool = False) -> str:
+    parts = [SOULFUL_POEM_SCRIPT_PROMPT]
+    if chatterbox:
+        parts.append(CHATTERBOX_POEM_TTS_PROMPT)
+    return "\n\n".join(part for part in parts)
+
+
+MATH_EXPLAINER_SCRIPT_PROMPT = """
+Write the narration for a 30-60 second vertical math-explainer video.
+
+Focus and structure:
+- Explain exactly ONE mathematical idea, theorem, or intuition — no more
+- Hook in the first sentence with a surprising fact, a question, or a concrete stake
+- Then: state the idea plainly, give the key intuition or one worked example, land the payoff
+- Assume a curious non-expert viewer; build intuition before any formula
+- Keep it tight: roughly 70-140 spoken words total
+
+Voice and delivery:
+- Warm, confident, curious — like a great teacher, not a textbook
+- Say equations in words the TTS can read aloud (say "a squared plus b squared equals c squared", not "a^2 + b^2 = c^2")
+- Short and medium sentences; vary rhythm; one idea per sentence
+- End on a satisfying insight, not a trailing question or a call-to-action
+
+Do NOT: use markdown, headings, bullet points, LaTeX, symbols like ^ or *, speaker labels, or stage directions. Return only the narration text to be spoken aloud.
+""".strip()
+
+
+def build_math_explainer_script_prompt(*, chatterbox: bool = False) -> str:
+    parts = [MATH_EXPLAINER_SCRIPT_PROMPT]
+    if chatterbox:
+        parts.append(CHATTERBOX_TTS_SCRIPT_PROMPT)
+    return "\n\n".join(part for part in parts)
+
+
+def build_style_script_prompt(*, style: str = "reel", chatterbox: bool = False) -> str:
+    if style == "soulful-poem":
+        return build_soulful_poem_script_prompt(chatterbox=chatterbox)
+    if style == "math-explainer":
+        return build_math_explainer_script_prompt(chatterbox=chatterbox)
+    return build_reel_script_prompt(chatterbox=chatterbox)
+
+
+def _clean_script_response(response: str) -> str:
+    response = response.replace("*", "")
+    response = response.replace("#", "")
+    response = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", response)
+
+    placeholders: list[str] = []
+
+    def _preserve_or_drop_tag(match: re.Match[str]) -> str:
+        inner = match.group(1).strip().lower()
+        if inner in CHATTERBOX_PARALINGUISTIC_TAGS:
+            idx = len(placeholders)
+            placeholders.append(match.group(0))
+            return f"__PARALING_{idx}__"
+        return ""
+
+    response = re.sub(r"\[([^\]]+)\]", _preserve_or_drop_tag, response)
+    response = re.sub(r"\([^)]*\)", "", response)
+
+    for idx, tag in enumerate(placeholders):
+        response = response.replace(f"__PARALING_{idx}__", tag)
+
+    return response
 
 
 def _normalize_text_response(content, llm_provider: str) -> str:
@@ -697,22 +885,8 @@ def generate_script(
     )
 
     def format_response(response):
-        # Clean the script
-        # Remove asterisks, hashes
-        response = response.replace("*", "")
-        response = response.replace("#", "")
-
-        # Remove markdown syntax
-        response = re.sub(r"\[.*\]", "", response)
-        response = re.sub(r"\(.*\)", "", response)
-
-        # Split the script into paragraphs
+        response = _clean_script_response(response)
         paragraphs = response.split("\n\n")
-
-        # Select the specified number of paragraphs
-        # selected_paragraphs = paragraphs[:paragraph_number]
-
-        # Join the selected paragraphs into a single string
         return "\n\n".join(paragraphs)
 
     for i in range(_max_retries):
@@ -860,6 +1034,122 @@ Please note that you must use English for generating video search terms; Chinese
 
     logger.success(f"completed: \n{search_terms}")
     return search_terms
+
+
+# =============================================================================
+# Manim math-explainer scene spec
+#
+# 让 LLM 只输出结构化的 JSON 场景说明（标题、公式、步骤、绘图等），
+# 由固定的 Manim 模板渲染。不会执行 LLM 生成的任意代码，
+# 校验和兜底在 app/services/manim_video.py 中完成。
+# =============================================================================
+
+MANIM_SPEC_SEGMENT_TYPES = (
+    "title_card",
+    "equation_reveal",
+    "step_by_step",
+    "bullet_points",
+    "axes_plot",
+    "number_line",
+    "right_triangle",
+    "squares_on_sides",
+    "pythagorean_triple",
+    "area_grid",
+)
+
+
+def generate_manim_spec(
+    video_subject: str,
+    video_script: str,
+    duration: float = 40.0,
+) -> dict:
+    """Generate a JSON scene spec for the Manim math-explainer templates.
+
+    Returns a raw dict (possibly imperfect); validation and safe fallback live in
+    ``app/services/manim_video.py::validate_or_default``. On any LLM/parse
+    failure this returns an empty dict so the caller falls back to a default.
+    """
+    segment_count = max(2, min(6, round(duration / 8)))
+    prompt = f"""
+# Role: Manim Math-Explainer Scene Designer
+
+## Goal
+Design the on-screen visuals for a {int(duration)}-second vertical (9:16) math
+explainer video, as a JSON scene spec rendered by fixed Manim templates.
+
+## Output format
+Return ONLY a JSON object (no prose, no code fence) with this shape:
+{{
+  "title": "short video title",
+  "accent_color": "#4da6ff",
+  "background_color": "#0b0f1a",
+  "segments": [ /* about {segment_count} segments, in narration order */ ]
+}}
+
+## Allowed segment types (use "type" plus only its listed fields)
+- "title_card": {{ "title": str, "subtitle": str (optional) }}
+- "equation_reveal": {{ "caption": str (optional), "equations": [LaTeX string, ...] }}
+- "step_by_step": {{ "title": str, "steps": [str, ...] }}
+- "bullet_points": {{ "title": str, "points": [str, ...] }}
+- "axes_plot": {{ "function": "python expr in x", "x_range": [min,max], "y_range": [min,max], "label": str (optional) }}
+- "number_line": {{ "x_range": [min,max], "label": str (optional) }}
+- "right_triangle": {{ "side_a": number, "side_b": number, "caption": str (optional) }}
+- "squares_on_sides": {{ "side_a": number, "side_b": number, "title": str (optional) }}
+- "pythagorean_triple": {{ "side_a": number, "side_b": number }} — animated 3-4-5 style demo with squares and area sum
+- "area_grid": {{ "side": int, "title": str (optional) }} — n×n grid showing area = n²
+
+## Visual design rules
+- For geometry topics (Pythagorean theorem, triangles, area, squares), you MUST use at least
+  two of: right_triangle, squares_on_sides, pythagorean_triple, area_grid.
+- Do NOT use bullet_points or axes_plot for Pythagorean/geometry topics unless the narration
+  is purely abstract — prefer geometry templates instead.
+- For a 3-4-5 example use side_a=3, side_b=4 in geometry segments.
+- Use area_grid with side=3 then side=4 to show 9 + 16 = 25 when the narration mentions those areas.
+
+## Constraints
+1. Return only valid JSON. No markdown, no code fence, no comments.
+2. Use about {segment_count} segments that follow the narration's order.
+3. equations use LaTeX WITHOUT surrounding $ (e.g. "a^2 + b^2 = c^2").
+4. axes_plot "function" must use only x and math functions (sin, cos, exp, log, sqrt, abs); no imports, no other names.
+5. Keep text short — a few words per line so it fits a phone screen.
+
+## Context
+### Video Subject
+{video_subject}
+
+### Narration Script
+{video_script}
+""".strip()
+
+    logger.info(f"generating manim scene spec: subject={video_subject}")
+    response = ""
+    for i in range(_max_retries):
+        try:
+            response = _generate_response(prompt)
+            if not response or "Error: " in response:
+                logger.warning(f"manim spec generation returned error: {response}")
+                continue
+            spec = json.loads(_strip_code_fence(response))
+            if isinstance(spec, dict) and spec.get("segments"):
+                logger.success("manim scene spec generated")
+                return spec
+            logger.warning("manim spec response missing segments")
+        except Exception as e:
+            logger.warning(f"failed to generate manim spec: {str(e)}")
+            if response:
+                match = re.search(r"\{.*\}", response, re.DOTALL)
+                if match:
+                    try:
+                        spec = json.loads(match.group())
+                        if isinstance(spec, dict) and spec.get("segments"):
+                            return spec
+                    except Exception as e2:
+                        logger.warning(f"failed to recover manim spec json: {str(e2)}")
+        if i < _max_retries:
+            logger.warning(f"failed to generate manim spec, trying again... {i + 1}")
+
+    logger.warning("manim spec generation failed; caller will use default spec")
+    return {}
 
 
 # =============================================================================
