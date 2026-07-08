@@ -247,7 +247,9 @@ def generate_subtitle(task_id, params, video_script, sub_maker, audio_file):
     return subtitle_path
 
 
-def get_video_materials(task_id, params, video_terms, audio_duration, video_script=""):
+def get_video_materials(
+    task_id, params, video_terms, audio_duration, video_script="", subtitle_path=""
+):
     if params.video_source == "local":
         logger.info("\n\n## preprocess local materials")
         materials = video.preprocess_video(
@@ -268,6 +270,12 @@ def get_video_materials(task_id, params, video_terms, audio_duration, video_scri
             duration=audio_duration,
         )
         spec = manim_video.validate_or_default(raw_spec, params.video_subject)
+        spec = manim_video.apply_subtitle_timing(
+            spec,
+            subtitle_path=subtitle_path,
+            video_script=video_script,
+            total_duration=audio_duration,
+        )
         # 允许通过参数覆盖模板配色，未设置时沿用 spec/模板默认值。
         if getattr(params, "manim_accent_color", None):
             spec.accent_color = params.manim_accent_color
@@ -450,7 +458,12 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
 
     # 5. Get video materials
     downloaded_videos = get_video_materials(
-        task_id, params, video_terms, audio_duration, video_script
+        task_id,
+        params,
+        video_terms,
+        audio_duration,
+        video_script,
+        subtitle_path,
     )
     if not downloaded_videos:
         sm.state.update_task(task_id, state=const.TASK_STATE_FAILED)
@@ -471,6 +484,8 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
     # 这样可以避免 /subtitle 和 /audio 这类请求访问不存在的字段。
     if type(params.video_concat_mode) is str:
         params.video_concat_mode = VideoConcatMode(params.video_concat_mode)
+
+    manim_video.apply_manim_video_defaults(params)
 
     # 6. Generate final videos
     final_video_paths, combined_video_paths = generate_final_videos(

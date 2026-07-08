@@ -1069,7 +1069,7 @@ def generate_manim_spec(
     ``app/services/manim_video.py::validate_or_default``. On any LLM/parse
     failure this returns an empty dict so the caller falls back to a default.
     """
-    segment_count = max(2, min(6, round(duration / 8)))
+    segment_count = max(4, min(6, round(duration / 8)))
     prompt = f"""
 # Role: Manim Math-Explainer Scene Designer
 
@@ -1087,24 +1087,39 @@ Return ONLY a JSON object (no prose, no code fence) with this shape:
 }}
 
 ## Allowed segment types (use "type" plus only its listed fields)
-- "title_card": {{ "title": str, "subtitle": str (optional) }}
-- "equation_reveal": {{ "caption": str (optional), "equations": [LaTeX string, ...] }}
-- "step_by_step": {{ "title": str, "steps": [str, ...] }}
-- "bullet_points": {{ "title": str, "points": [str, ...] }}
-- "axes_plot": {{ "function": "python expr in x", "x_range": [min,max], "y_range": [min,max], "label": str (optional) }}
-- "number_line": {{ "x_range": [min,max], "label": str (optional) }}
-- "right_triangle": {{ "side_a": number, "side_b": number, "caption": str (optional) }}
-- "squares_on_sides": {{ "side_a": number, "side_b": number, "title": str (optional) }}
-- "pythagorean_triple": {{ "side_a": number, "side_b": number }} — animated 3-4-5 style demo with squares and area sum
-- "area_grid": {{ "side": int, "title": str (optional) }} — n×n grid showing area = n²
+- "title_card": {{ "title": str, "subtitle": str (optional), "narration_hint": str (optional) }}
+- "equation_reveal": {{ "caption": str (optional), "equations": [LaTeX string, ...], "narration_hint": str }}
+- "step_by_step": {{ "title": str, "steps": [str, ...], "narration_hint": str (optional) }}
+- "bullet_points": {{ "title": str, "points": [str, ...], "narration_hint": str (optional) }}
+- "axes_plot": {{ "function": "python expr in x", "x_range": [min,max], "y_range": [min,max], "label": str (optional), "narration_hint": str (optional) }}
+- "number_line": {{ "x_range": [min,max], "label": str (optional), "narration_hint": str (optional) }}
+- "right_triangle": {{ "side_a": number, "side_b": number, "caption": str (optional), "narration_hint": str }}
+- "squares_on_sides": {{ "side_a": number, "side_b": number, "title": str (optional), "narration_hint": str }}
+- "pythagorean_triple": {{ "side_a": number, "side_b": number, "narration_hint": str }} — triangle + squares + "9 + 16 = 25" summary
+- "squares_transform": {{ "side_a": number, "side_b": number, "title": str (optional), "narration_hint": str }} — ANIMATED: the two leg squares visibly slide onto and fill the hypotenuse square, then "9 + 16 = 25" appears
+- "area_grid": {{ "side": int, "title": str (optional), "narration_hint": str }} — n×n grid showing area = n²
+- "highlight": {{ "narration_hint": str }} — pulses whatever is already on screen; use when the narration refers back to an equation or diagram that is already displayed
 
 ## Visual design rules
+- Do NOT start with title_card — open directly on the first concept (triangle, equation, etc.).
 - For geometry topics (Pythagorean theorem, triangles, area, squares), you MUST use at least
   two of: right_triangle, squares_on_sides, pythagorean_triple, area_grid.
-- Do NOT use bullet_points or axes_plot for Pythagorean/geometry topics unless the narration
-  is purely abstract — prefer geometry templates instead.
+- If you use ANY geometry template, you MUST NOT use number_line, axes_plot, or bullet_points
+  anywhere in the spec — they break the visual story and will be removed.
 - For a 3-4-5 example use side_a=3, side_b=4 in geometry segments.
-- Use area_grid with side=3 then side=4 to show 9 + 16 = 25 when the narration mentions those areas.
+- When the narration says the two smaller squares ADD UP TO / FILL / COMBINE INTO the big
+  square, you MUST use "squares_transform" (an animation of the areas moving) rather than a
+  static squares_on_sides or pythagorean_triple at that moment.
+- Prefer ONE "pythagorean_triple" segment (shows 9 + 16 = 25) over two separate area_grid(3) and area_grid(4).
+- End with area_grid side=5 (title "c² = 25") when the narration mentions the hypotenuse square.
+- Equations are animated as if handwritten: place "equation_reveal" at the exact moment the
+  equation is FIRST spoken. If the narration mentions the same equation or diagram AGAIN later,
+  add a "highlight" segment there instead of repeating the visual.
+- "highlight" must never be the first segment.
+- Segments MUST appear in the exact order their ideas are spoken in the narration script.
+- Every segment MUST include "narration_hint": a short phrase copied VERBATIM from the narration
+  script that is spoken while this visual should be on screen (5-12 words). Visual timing is
+  derived from this phrase, so an inaccurate hint desynchronizes the video.
 
 ## Constraints
 1. Return only valid JSON. No markdown, no code fence, no comments.

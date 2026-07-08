@@ -18,6 +18,8 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
+import traceback
 from typing import Any, Callable
 
 import numpy as np
@@ -30,14 +32,27 @@ from manim import (
     Axes,
     Create,
     FadeOut,
+    Indicate,
     NumberLine,
     Polygon,
     Scene,
     Square,
     Text,
+    Transform,
     VGroup,
     Write,
 )
+from manim import config as manim_config
+
+# Manim CE does NOT recompute the camera frame when --resolution changes: it
+# keeps the default 14.22x8-unit landscape frame, so a 1080x1920 portrait
+# render maps 14.22 units across 1080px and shows ~25 units vertically —
+# content built for an 8-unit-tall frame ends up tiny in the middle third.
+# Match the frame to the actual pixel aspect so 1 unit renders the same size
+# in every orientation (portrait: 4.5x8 units for 1080x1920).
+_frame_aspect = float(os.environ.get("MANIM_FRAME_ASPECT", "0") or 0)
+if _frame_aspect > 0:
+    manim_config.frame_width = manim_config.frame_height * _frame_aspect
 
 try:  # MathTex needs a LaTeX toolchain; degrade gracefully when it is absent.
     from manim import MathTex
@@ -92,6 +107,32 @@ def _target_duration() -> float:
     return max(4.0, value)
 
 
+def _is_portrait() -> bool:
+    return os.environ.get("MANIM_IS_PORTRAIT", "0") == "1"
+
+
+def _portrait_scale() -> float:
+    return 1.75 if _is_portrait() else 1.0
+
+
+def _unicode_superscript(digits: str) -> str:
+    table = str.maketrans("0123456789", "⁰¹²³⁴⁵⁶⁷⁸⁹")
+    return digits.translate(table)
+
+
+def _unicode_math(expr: str) -> str:
+    """Convert ``a^2 + b^2`` style to Unicode superscripts when LaTeX is absent."""
+
+    def repl(match: re.Match[str]) -> str:
+        base = match.group(1) or ""
+        exp = _unicode_superscript(match.group(2))
+        return f"{base}{exp}"
+
+    result = re.sub(r"(\w?)\^(\d+)", repl, expr)
+    result = result.replace(" x ", " × ")
+    return result
+
+
 def _safe_math_fn(expr: str) -> Callable[[float], float]:
     """Compile a plot expression into a callable over ``x`` in a safe namespace."""
     code = compile(expr, "<manim-plot>", "eval")
@@ -109,6 +150,7 @@ def _triangle_vertices(side_a: float, side_b: float, scale: float = 0.55):
     """Right triangle: right angle at origin, leg a along +x, leg b along +y."""
     a = max(0.5, float(side_a))
     b = max(0.5, float(side_b))
+    scale *= _portrait_scale()
     p0 = ORIGIN
     p1 = a * scale * RIGHT
     p2 = p1 + b * scale * UP
@@ -149,12 +191,14 @@ class MathExplainerScene(Scene):
 
         segments = spec.get("segments") or []
         if not segments:
-            segments = [{"type": "title_card", "title": spec.get("title", "Math")}]
+            segments = [{"type": "title_card", "title": spec.get("title") or "Math"}]
 
-        slot = _target_duration() / max(1, len(segments))
-        # In/out animation budget per segment; the remainder is a static hold.
-        anim = min(1.2, max(0.4, slot * 0.35))
-        hold = max(0.6, slot - 2 * anim)
+        total = _target_duration()
+        default_slot = total / max(1, len(segments))
+        fade_time = 0.3
+        intro_time = 0.9
+        write_time = 1.2
+        outro_time = 0.35
 
         builders: dict[str, Callable[[dict[str, Any]], VGroup]] = {
             "title_card": self._title_card,
@@ -166,6 +210,7 @@ class MathExplainerScene(Scene):
             "right_triangle": self._right_triangle,
             "squares_on_sides": self._squares_on_sides,
             "pythagorean_triple": self._pythagorean_triple,
+            "squares_transform": self._squares_transform,
             "area_grid": self._area_grid,
         }
         create_types = {
@@ -174,21 +219,110 @@ class MathExplainerScene(Scene):
             "right_triangle",
             "squares_on_sides",
             "pythagorean_triple",
+            "squares_transform",
             "area_grid",
         }
+        # Post-intro animations that play out INSIDE a segment's time slot.
+        animators: dict[str, Callable[[dict[str, Any], VGroup, float], float]] = {
+            "squares_transform": self._animate_squares_transform,
+        }
 
-        for segment in segments:
+        # Each segment appears at its absolute start time (matched to the
+        # narration by apply_subtitle_timing); the current visual simply holds
+        # until the next start. Without spec starts, fall back to even slots.
+        current = None
+        elapsed = 0.0
+        prev_start = 0.0
+        for index, segment in enumerate(segments):
             seg_type = str(segment.get("type", "title_card"))
+
+            raw_start = segment.get("start")
+            start = (
+                float(raw_start)
+                if raw_start is not None
+                else index * default_slot
+            )
+            start = max(start, prev_start)
+            prev_start = start
+
+            if seg_type == "highlight":
+                # The narration is referring back to what is already on
+                # screen: pulse it instead of replacing it.
+                if current is None:
+                    continue
+                if start > elapsed:
+                    self.wait(start - elapsed)
+                    elapsed = start
+                self.play(
+                    Indicate(current, scale_factor=1.06, color=self.accent),
+                    run_time=1.2,
+                )
+                elapsed += 1.2
+                continue
+
             builder = builders.get(seg_type, self._title_card)
             try:
                 mobject = builder(segment)
             except Exception:
-                mobject = self._title_card({"title": str(segment.get("title", "Math"))})
+                # Surface the failure in the manim CLI output (captured by
+                # render_manim_video) and keep the previous visual on screen
+                # rather than flashing a broken placeholder.
+                print(
+                    f"[manim_templates] segment {index} ({seg_type}) failed to build:",
+                    flush=True,
+                )
+                traceback.print_exc()
+                continue
 
-            intro = Create(mobject) if seg_type in create_types else Write(mobject)
-            self.play(intro, run_time=anim)
-            self.wait(hold)
-            self.play(FadeOut(mobject), run_time=anim)
+            if start > elapsed:
+                self.wait(start - elapsed)
+                elapsed = start
+
+            if current is not None:
+                self.play(FadeOut(current), run_time=fade_time)
+                elapsed += fade_time
+            if seg_type in create_types:
+                self.play(Create(mobject), run_time=intro_time)
+                elapsed += intro_time
+            else:
+                # Text and equations appear as if written by hand while the
+                # narration introduces them.
+                self.play(Write(mobject), run_time=write_time)
+                elapsed += write_time
+            current = mobject
+
+            animator = animators.get(seg_type)
+            if animator is not None:
+                raw_duration = segment.get("duration")
+                slot = (
+                    float(raw_duration)
+                    if raw_duration is not None
+                    else default_slot
+                )
+                budget = start + slot - elapsed
+                try:
+                    elapsed += animator(segment, mobject, max(0.0, budget))
+                except Exception:
+                    print(
+                        f"[manim_templates] segment {index} ({seg_type}) "
+                        "animation failed:",
+                        flush=True,
+                    )
+                    traceback.print_exc()
+
+        if current is None:
+            # Every builder failed; render a safe title card instead of a
+            # black video so the task still produces something usable.
+            fallback = self._title_card({"title": spec.get("title") or "Math"})
+            self.play(Write(fallback), run_time=intro_time)
+            elapsed += intro_time
+            current = fallback
+
+        # Hold the final visual so the render covers the full narration.
+        tail = total - elapsed - outro_time
+        if tail > 0:
+            self.wait(tail)
+        self.play(FadeOut(current), run_time=outro_time)
 
     # --- helpers -----------------------------------------------------------
     def _math(self, expr: str, **kwargs: Any):
@@ -197,13 +331,45 @@ class MathExplainerScene(Scene):
                 return MathTex(expr, **kwargs)
             except Exception:
                 pass
-        return Text(expr, **kwargs)
+        kwargs.setdefault("font_size", kwargs.get("font_size", 56))
+        return Text(_unicode_math(expr), **kwargs)
 
-    def _fit(self, mobject, max_width: float = 12.0, max_height: float = 7.0):
+    def _fit(
+        self,
+        mobject,
+        max_width: float | None = None,
+        max_height: float | None = None,
+    ):
+        # At a portrait resolution Manim keeps frame_height = 8.0 and derives
+        # frame_width from the aspect: 8 * (1080/1920) = 4.5 units. Anything
+        # wider than that is cropped off-screen, so the caps must respect the
+        # visible frame, not the landscape defaults.
+        if _is_portrait():
+            cap_width, cap_height = 4.2, 5.0
+        else:
+            cap_width, cap_height = 12.0, 7.0
+        max_width = min(max_width, cap_width) if max_width else cap_width
+        max_height = min(max_height, cap_height) if max_height else cap_height
         if mobject.width > max_width:
             mobject.scale_to_fit_width(max_width)
         if mobject.height > max_height:
             mobject.scale_to_fit_height(max_height)
+        # Geometry templates build outward from ORIGIN, which leaves them
+        # off-center; recenter every group before placing it.
+        mobject.move_to(ORIGIN)
+        if _is_portrait():
+            mobject.shift(UP * 0.85)
+            # Burned-in subtitles are anchored at 78% of the frame height and
+            # a three-line box reaches up to about y = -1.7; keep a margin so
+            # bottom labels never sit behind the subtitle background.
+            subtitle_top = -1.4
+            bottom = float(mobject.get_bottom()[1])
+            if bottom < subtitle_top:
+                mobject.shift(UP * (subtitle_top - bottom))
+            top_limit = 3.8
+            top = float(mobject.get_top()[1])
+            if top > top_limit:
+                mobject.shift(DOWN * (top - top_limit))
         return mobject
 
     # --- templates ---------------------------------------------------------
@@ -313,9 +479,15 @@ class MathExplainerScene(Scene):
         )
         group = VGroup(triangle, labels)
         caption = segment.get("caption") or segment.get("title")
+        # Skip captions like "c = 5" that just repeat a side label already
+        # drawn on the figure.
+        if caption and re.fullmatch(
+            r"[abc]\s*=\s*[\d.]+", str(caption).strip(), flags=re.IGNORECASE
+        ):
+            caption = None
         if caption:
             title = Text(str(caption), color=self.accent, font_size=40)
-            title.to_edge(UP, buff=0.5)
+            title.next_to(group, UP, buff=0.6)
             group.add(title)
         return self._fit(group)
 
@@ -335,17 +507,20 @@ class MathExplainerScene(Scene):
         area_b = int(b * b)
         area_c = int(a * a + b * b)
         labels = VGroup(
-            Text(f"a^2={area_a}", color=self.text_color, font_size=28).move_to(sq_a.get_center()),
-            Text(f"b^2={area_b}", color=self.text_color, font_size=28).move_to(sq_b.get_center()),
-            Text(f"c^2={area_c}", color=self.text_color, font_size=28).move_to(sq_c.get_center()),
+            Text(f"a²={area_a}", color=self.text_color, font_size=32).move_to(sq_a.get_center()),
+            Text(f"b²={area_b}", color=self.text_color, font_size=32).move_to(sq_b.get_center()),
+            Text(f"c²={area_c}", color=self.text_color, font_size=32).move_to(sq_c.get_center()),
         )
         group = VGroup(triangle, sq_a, sq_b, sq_c, labels)
         title = segment.get("title")
         if title:
-            header = Text(str(title), color=self.accent, font_size=38)
-            header.to_edge(UP, buff=0.4)
+            header = Text(str(title), color=self.accent, font_size=42)
+            # Position relative to the diagram, not the frame edge: _fit
+            # recenters the whole group, so edge-anchored headers end up on
+            # top of the figure.
+            header.next_to(group, UP, buff=0.55)
             group.add(header)
-        return self._fit(group, max_width=11.0, max_height=6.5)
+        return self._fit(group, max_width=10.5, max_height=9.0)
 
     def _pythagorean_triple(self, segment: dict[str, Any]) -> VGroup:
         """3-4-5 style demo: triangle, squares, and area labels."""
@@ -361,18 +536,134 @@ class MathExplainerScene(Scene):
         summary = Text(
             f"{area_a} + {area_b} = {area_c}",
             color=self.accent,
-            font_size=44,
+            font_size=48,
             weight="BOLD",
         )
-        summary.to_edge(DOWN, buff=0.5)
+        summary.next_to(group, DOWN, buff=0.5)
         group.add(summary)
-        return self._fit(group, max_width=11.0, max_height=6.8)
+        return self._fit(group, max_width=10.5, max_height=9.2)
+
+    def _squares_transform(self, segment: dict[str, Any]) -> VGroup:
+        """Triangle with squares where the leg squares visibly fill c²."""
+        a, b = self._side_lengths(segment)
+        p0, p1, p2, _, _ = _triangle_vertices(a, b, scale=0.45)
+        triangle = Polygon(
+            p0, p1, p2,
+            color=self.accent,
+            fill_opacity=0.2,
+            stroke_width=3,
+        )
+        sq_a = _square_on_edge(p0, p1, p2, self.accent)
+        sq_b = _square_on_edge(p1, p2, p0, self.accent)
+        sq_c = _square_on_edge(p0, p2, p1, self.accent, fill_opacity=0.08)
+        area_a, area_b = int(a * a), int(b * b)
+        area_c = area_a + area_b
+        labels = VGroup(
+            Text(f"a²={area_a}", color=self.text_color, font_size=32).move_to(
+                sq_a.get_center()
+            ),
+            Text(f"b²={area_b}", color=self.text_color, font_size=32).move_to(
+                sq_b.get_center()
+            ),
+        )
+
+        # Split c² into two strips whose areas are exactly a² and b² (the
+        # classic similar-triangle decomposition). They are built invisible so
+        # _fit positions them with the rest of the group; the animator morphs
+        # ghost copies of the leg squares onto them.
+        edge = p2 - p0
+        c_units = float(np.linalg.norm(edge))
+        perp = np.array([-edge[1], edge[0], 0.0])
+        perp = perp / max(1e-6, float(np.linalg.norm(perp)))
+        mid = (p0 + p2) / 2
+        if np.dot(perp, p1 - mid) > 0:
+            perp = -perp
+        h_a = c_units * (a * a) / (a * a + b * b)
+        strip_a = Polygon(
+            p0, p2, p2 + perp * h_a, p0 + perp * h_a,
+            stroke_opacity=0.0,
+            fill_opacity=0.0,
+        )
+        strip_b = Polygon(
+            p0 + perp * h_a,
+            p2 + perp * h_a,
+            p2 + perp * c_units,
+            p0 + perp * c_units,
+            stroke_opacity=0.0,
+            fill_opacity=0.0,
+        )
+
+        summary = Text(
+            f"{area_a} + {area_b} = {area_c}",
+            color=self.accent,
+            font_size=48,
+            weight="BOLD",
+        )
+        summary.set_opacity(0.0)
+
+        group = VGroup(triangle, sq_a, sq_b, sq_c, strip_a, strip_b, labels)
+        summary.next_to(group, DOWN, buff=0.5)
+        group.add(summary)
+        title = segment.get("title")
+        if title:
+            header = Text(str(title), color=self.accent, font_size=42)
+            header.next_to(group, UP, buff=0.55)
+            group.add(header)
+        self._fit(group, max_width=10.5, max_height=9.2)
+        group.transform_parts = {
+            "sq_a": sq_a,
+            "sq_b": sq_b,
+            "strip_a": strip_a,
+            "strip_b": strip_b,
+            "summary": summary,
+        }
+        return group
+
+    def _animate_squares_transform(
+        self, segment: dict[str, Any], group: VGroup, budget: float
+    ) -> float:
+        """Slide copies of the leg squares onto c², then reveal the sum.
+
+        Plays within ``budget`` seconds and returns the time consumed so the
+        scene scheduler keeps segment starts aligned with the narration.
+        """
+        parts = getattr(group, "transform_parts", None)
+        if not parts or budget < 2.5:
+            return 0.0
+        consumed = 0.0
+
+        pause = min(0.8, budget * 0.15)
+        if pause > 0:
+            self.wait(pause)
+            consumed += pause
+
+        move_time = min(1.3, (budget - consumed) * 0.3)
+        for src_key, dst_key in (("sq_a", "strip_a"), ("sq_b", "strip_b")):
+            ghost = parts[src_key].copy()
+            target = (
+                parts[dst_key]
+                .copy()
+                .set_stroke(self.accent, width=2, opacity=1.0)
+                .set_fill(self.accent, opacity=0.45)
+            )
+            self.play(Transform(ghost, target), run_time=move_time)
+            consumed += move_time
+            # play() left the ghost as a top-level scene mobject; re-parent it
+            # into the group so the segment crossfade fades it out too.
+            self.remove(ghost)
+            group.add(ghost)
+
+        summary = parts["summary"]
+        if budget - consumed >= 0.8:
+            self.play(summary.animate.set_opacity(1.0), run_time=0.8)
+            consumed += 0.8
+        return consumed
 
     def _area_grid(self, segment: dict[str, Any]) -> VGroup:
         """n×n unit-square grid illustrating side length squared = area."""
         n = int(segment.get("side") or segment.get("side_a") or 3)
         n = max(2, min(n, 6))
-        cell = 0.38
+        cell = 0.48 * (_portrait_scale() / 1.75)
         grid = VGroup()
         for row in range(n):
             for col in range(n):
@@ -390,9 +681,9 @@ class MathExplainerScene(Scene):
                 grid.add(sq)
         area = n * n
         label = Text(
-            f"{n} x {n}  area = {area}",
+            f"{n} × {n}  area = {area}",
             color=self.text_color,
-            font_size=40,
+            font_size=44,
             weight="BOLD",
         )
         label.next_to(grid, DOWN, buff=0.45)
@@ -400,7 +691,7 @@ class MathExplainerScene(Scene):
         title = segment.get("title") or segment.get("caption")
         if title:
             header = Text(str(title), color=self.accent, font_size=38)
-            header.to_edge(UP, buff=0.4)
+            header.next_to(group, UP, buff=0.5)
             group.add(header)
         return self._fit(group)
 
