@@ -115,22 +115,61 @@ def _portrait_scale() -> float:
     return 1.75 if _is_portrait() else 1.0
 
 
-def _unicode_superscript(digits: str) -> str:
-    table = str.maketrans("0123456789", "⁰¹²³⁴⁵⁶⁷⁸⁹")
-    return digits.translate(table)
+_SUPERSCRIPT_MAP = {
+    "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴",
+    "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹",
+    "+": "⁺", "-": "⁻", "(": "⁽", ")": "⁾", "=": "⁼",
+    "a": "ᵃ", "b": "ᵇ", "c": "ᶜ", "d": "ᵈ", "e": "ᵉ", "f": "ᶠ",
+    "g": "ᵍ", "h": "ʰ", "i": "ⁱ", "j": "ʲ", "k": "ᵏ", "l": "ˡ",
+    "m": "ᵐ", "n": "ⁿ", "o": "ᵒ", "p": "ᵖ", "r": "ʳ", "s": "ˢ",
+    "t": "ᵗ", "u": "ᵘ", "v": "ᵛ", "w": "ʷ", "x": "ˣ", "y": "ʸ", "z": "ᶻ",
+}
+_SUBSCRIPT_MAP = {
+    "0": "₀", "1": "₁", "2": "₂", "3": "₃", "4": "₄",
+    "5": "₅", "6": "₆", "7": "₇", "8": "₈", "9": "₉",
+    "+": "₊", "-": "₋", "=": "₌",
+    "a": "ₐ", "e": "ₑ", "h": "ₕ", "i": "ᵢ", "j": "ⱼ", "k": "ₖ",
+    "l": "ₗ", "m": "ₘ", "n": "ₙ", "o": "ₒ", "p": "ₚ", "r": "ᵣ",
+    "s": "ₛ", "t": "ₜ", "u": "ᵤ", "v": "ᵥ", "x": "ₓ",
+}
+_LATEX_SYMBOLS = {
+    r"\cdot": "·", r"\times": "×", r"\div": "÷", r"\pm": "±",
+    r"\pi": "π", r"\theta": "θ", r"\alpha": "α", r"\beta": "β",
+    r"\infty": "∞", r"\sqrt": "√", r"\approx": "≈",
+    r"\leq": "≤", r"\geq": "≥", r"\le": "≤", r"\ge": "≥",
+    r"\neq": "≠", r"\ne": "≠",
+    r"\sum": "Σ", r"\prod": "Π", r"\int": "∫",
+    r"\rightarrow": "→", r"\to": "→",
+    r"\left": "", r"\right": "",
+}
 
 
 def _unicode_math(expr: str) -> str:
-    """Convert ``a^2 + b^2`` style to Unicode superscripts when LaTeX is absent."""
+    """Best-effort LaTeX -> plain Unicode for when no TeX toolchain exists.
 
-    def repl(match: re.Match[str]) -> str:
-        base = match.group(1) or ""
-        exp = _unicode_superscript(match.group(2))
-        return f"{base}{exp}"
+    Handles the constructs the LLM actually emits (\\cdot, \\frac, ^{...},
+    _{...}, single-char scripts) so formulas like ``N = N_0 \\cdot 2^t`` read
+    as ``N = N₀ · 2ᵗ`` instead of showing raw LaTeX source on screen.
+    """
+    result = expr
+    result = re.sub(r"\\frac\{([^{}]*)\}\{([^{}]*)\}", r"\1/\2", result)
+    for command, symbol in _LATEX_SYMBOLS.items():
+        result = result.replace(command, symbol)
 
-    result = re.sub(r"(\w?)\^(\d+)", repl, expr)
-    result = result.replace(" x ", " × ")
-    return result
+    def _script(match: re.Match[str], table: dict[str, str]) -> str:
+        content = match.group(1) if match.group(1) is not None else match.group(2)
+        return "".join(table.get(ch, ch) for ch in content)
+
+    result = re.sub(
+        r"\^\{([^{}]*)\}|\^(\w)", lambda m: _script(m, _SUPERSCRIPT_MAP), result
+    )
+    result = re.sub(
+        r"_\{([^{}]*)\}|_(\w)", lambda m: _script(m, _SUBSCRIPT_MAP), result
+    )
+    # Anything LaTeX-ish that survived would render as literal source; drop it.
+    result = re.sub(r"\\[A-Za-z]+", "", result)
+    result = result.replace("{", "").replace("}", "")
+    return " ".join(result.split())
 
 
 def _safe_math_fn(expr: str) -> Callable[[float], float]:
@@ -431,16 +470,50 @@ class MathExplainerScene(Scene):
     def _axes_plot(self, segment: dict[str, Any]) -> VGroup:
         x_range = segment.get("x_range") or [-5, 5]
         y_range = segment.get("y_range") or [-3, 3]
+
+        def _with_step(bounds: list) -> list[float]:
+            lo, hi = float(bounds[0]), float(bounds[1])
+            if hi <= lo:
+                hi = lo + 1.0
+            # Manim's default tick step is 1: an LLM range like [0, 1e13]
+            # would allocate trillions of tick marks and OOM the render.
+            # Aim for ~8 ticks whatever the span.
+            return [lo, hi, max((hi - lo) / 8.0, 1e-6)]
+
         axes = Axes(
-            x_range=[float(x_range[0]), float(x_range[1])],
-            y_range=[float(y_range[0]), float(y_range[1])],
+            x_range=_with_step(x_range),
+            y_range=_with_step(y_range),
             axis_config={"color": self.text_color, "include_tip": True},
         )
         group = VGroup(axes)
         expr = segment.get("function")
         if expr:
             fn = _safe_math_fn(str(expr))
-            graph = axes.plot(fn, color=self.accent)
+            # Manim does not clip graphs to the axes box: a fast-growing
+            # function (2**x over [0, 30] with y capped at 32) draws a path
+            # thousands of units tall, and _fit then shrinks the axes to a
+            # sliver. Restrict the plot domain to where the curve stays
+            # within the visible y-range.
+            x_min, x_max = float(x_range[0]), float(x_range[1])
+            y_min, y_max = float(y_range[0]), float(y_range[1])
+            margin = 0.05 * (y_max - y_min)
+            samples = 256
+            xs = [
+                x_min + (x_max - x_min) * i / (samples - 1)
+                for i in range(samples)
+            ]
+            visible = []
+            for x in xs:
+                try:
+                    y = float(fn(x))
+                except Exception:
+                    continue
+                if math.isfinite(y) and y_min - margin <= y <= y_max + margin:
+                    visible.append(x)
+            plot_range = (
+                [min(visible), max(visible)] if len(visible) >= 2 else [x_min, x_max]
+            )
+            graph = axes.plot(fn, x_range=plot_range, color=self.accent)
             group.add(graph)
         label = segment.get("label")
         if label:

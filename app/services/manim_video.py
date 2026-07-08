@@ -128,6 +128,23 @@ def default_spec(video_subject: str) -> SceneSpec:
     )
 
 
+# JSON unescaping mangles LaTeX: "\times" arrives as "<tab>imes", "\neq" as
+# "<newline>eq", etc. Rebuild the intended backslash commands.
+_CONTROL_CHAR_REPAIRS = {
+    "\t": "\\t",
+    "\n": "\\n",
+    "\r": "\\r",
+    "\f": "\\f",
+    "\b": "\\b",
+}
+
+
+def _repair_latex(expr: str) -> str:
+    for control, replacement in _CONTROL_CHAR_REPAIRS.items():
+        expr = expr.replace(control, replacement)
+    return expr.strip()
+
+
 def validate_or_default(raw: object, video_subject: str = "") -> SceneSpec:
     """Coerce arbitrary LLM output into a valid SceneSpec, falling back safely."""
     try:
@@ -139,6 +156,10 @@ def validate_or_default(raw: object, video_subject: str = "") -> SceneSpec:
         return default_spec(video_subject)
 
     spec.segments = [s for s in spec.segments if s.type in _SEGMENT_TYPES]
+
+    for segment in spec.segments:
+        if segment.equations:
+            segment.equations = [_repair_latex(eq) for eq in segment.equations]
 
     # A highlight pulses whatever is already on screen, so it is meaningless
     # (and renders nothing) before the first real visual.

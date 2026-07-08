@@ -134,6 +134,23 @@ class ValidateOrDefaultTest(unittest.TestCase):
         types = [s.type for s in spec.segments]
         self.assertEqual(types, ["right_triangle", "highlight", "area_grid"])
 
+    def test_latex_control_chars_repaired(self):
+        # JSON decoding turns \times into "<tab>imes" and \neq into
+        # "<newline>eq"; validation must restore the backslash commands.
+        raw = {
+            "segments": [
+                {
+                    "type": "equation_reveal",
+                    "equations": ["1.1\times10^{12}", "a \neq b"],
+                }
+            ]
+        }
+        spec = validate_or_default(raw, "Growth")
+        self.assertEqual(
+            spec.segments[0].equations,
+            ["1.1\\times10^{12}", "a \\neq b"],
+        )
+
     def test_abstract_segments_kept_without_geometry(self):
         raw = {
             "segments": [
