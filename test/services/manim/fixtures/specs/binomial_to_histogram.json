@@ -1,0 +1,5 @@
+{
+  "type": "binomial_to_histogram",
+  "count": 8,
+  "narration_hint": "flip eight coins"
+}

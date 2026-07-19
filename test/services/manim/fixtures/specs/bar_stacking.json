@@ -1,0 +1,19 @@
+{
+  "type": "bar_stacking",
+  "title": "Outcomes",
+  "values": [
+    1,
+    2,
+    3,
+    2,
+    1
+  ],
+  "labels": [
+    "2",
+    "3",
+    "4",
+    "5",
+    "6"
+  ],
+  "narration_hint": "stack up"
+}

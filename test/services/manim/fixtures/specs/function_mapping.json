@@ -1,0 +1,12 @@
+{
+  "type": "function_mapping",
+  "labels": [
+    "x \u2192 2x"
+  ],
+  "values": [
+    1,
+    2,
+    3
+  ],
+  "narration_hint": "the machine doubles"
+}

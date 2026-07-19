@@ -1,0 +1,14 @@
+{
+  "type": "axes_plot",
+  "function": "2**x",
+  "x_range": [
+    0,
+    6
+  ],
+  "y_range": [
+    0,
+    40
+  ],
+  "label": "growth",
+  "narration_hint": "the curve"
+}

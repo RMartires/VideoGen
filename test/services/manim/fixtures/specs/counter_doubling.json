@@ -1,0 +1,8 @@
+{
+  "type": "counter_doubling",
+  "title": "Doubling",
+  "start_value": 2,
+  "count": 4,
+  "label": "plants",
+  "narration_hint": "keeps doubling"
+}

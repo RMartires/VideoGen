@@ -1,0 +1,14 @@
+{
+  "type": "determinant_area",
+  "matrix": [
+    [
+      2,
+      1
+    ],
+    [
+      0,
+      2
+    ]
+  ],
+  "narration_hint": "area times four"
+}

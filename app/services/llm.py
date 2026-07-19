@@ -1044,20 +1044,6 @@ Please note that you must use English for generating video search terms; Chinese
 # 校验和兜底在 app/services/manim_video.py 中完成。
 # =============================================================================
 
-MANIM_SPEC_SEGMENT_TYPES = (
-    "title_card",
-    "equation_reveal",
-    "step_by_step",
-    "bullet_points",
-    "axes_plot",
-    "number_line",
-    "right_triangle",
-    "squares_on_sides",
-    "pythagorean_triple",
-    "area_grid",
-)
-
-
 def generate_manim_spec(
     video_subject: str,
     video_script: str,
@@ -1069,7 +1055,13 @@ def generate_manim_spec(
     ``app/services/manim_video.py::validate_or_default``. On any LLM/parse
     failure this returns an empty dict so the caller falls back to a default.
     """
+    from app.services.manim import catalog as manim_catalog
+
     segment_count = max(10, min(18, round(duration / 3.5)))
+    # The allowed-type block comes from catalog.yaml (single source of truth);
+    # topic-gated niche types are only listed when the subject matches their
+    # keywords, keeping the default prompt small.
+    segment_type_lines = "\n".join(manim_catalog.llm_type_lines(video_subject))
     prompt = f"""
 # Role: Manim Math-Explainer Scene Designer
 
@@ -1092,21 +1084,7 @@ Return ONLY a JSON object (no prose, no code fence) with this shape:
 }}
 
 ## Allowed segment types (use "type" plus only its listed fields)
-- "title_card": {{ "title": str, "subtitle": str (optional), "narration_hint": str (optional) }}
-- "equation_reveal": {{ "caption": str (optional), "equations": [LaTeX string, ...], "narration_hint": str }}
-- "step_by_step": {{ "title": str (optional), "steps": [str, ...], "narration_hint": str }} — ONE step per segment when possible; steps reveal one-by-one with animation
-- "bullet_points": {{ "title": str (optional), "points": [str, ...], "narration_hint": str }} — ONE point per segment when possible
-- "axes_plot": {{ "function": "python expr in x", "x_range": [min,max], "y_range": [min,max], "label": str (optional), "narration_hint": str }} — ANIMATED: curve draws over time with a moving tracer dot
-- "number_line": {{ "x_range": [min,max], "label": str (optional), "narration_hint": str (optional) }}
-- "counter_doubling": {{ "title": str (optional), "start_value": number, "count": int (optional), "end_value": number (optional), "label": str (optional), "narration_hint": str }} — ANIMATED: number doubles step-by-step (great for "doubling penny", seeds, bacteria)
-- "growth_bars": {{ "title": str (optional), "values": [number, ...], "labels": [str, ...], "narration_hint": str }} — ANIMATED: bars grow one at a time (use for day 1 / day 10 / day 20 milestones)
-- "value_pop": {{ "title": str (optional), "caption": str, "narration_hint": str }} — ANIMATED: one big number or phrase pops onto screen (e.g. "1,200 plants", "City Block")
-- "right_triangle": {{ "side_a": number, "side_b": number, "caption": str (optional), "narration_hint": str }}
-- "squares_on_sides": {{ "side_a": number, "side_b": number, "title": str (optional), "narration_hint": str }}
-- "pythagorean_triple": {{ "side_a": number, "side_b": number, "narration_hint": str }} — triangle + squares + "9 + 16 = 25" summary
-- "squares_transform": {{ "side_a": number, "side_b": number, "title": str (optional), "narration_hint": str }} — ANIMATED: the two leg squares visibly slide onto and fill the hypotenuse square, then "9 + 16 = 25" appears
-- "area_grid": {{ "side": int, "title": str (optional), "narration_hint": str }} — n×n grid showing area = n²; cells fill in with animation
-- "highlight": {{ "narration_hint": str }} — pulses whatever is already on screen; use when the narration refers back to an equation or diagram that is already displayed
+{segment_type_lines}
 
 ## Visual design rules
 - Do NOT start with title_card — open directly on the first concept (equation, counter, graph, etc.).
@@ -1115,6 +1093,20 @@ Return ONLY a JSON object (no prose, no code fence) with this shape:
   Instead use separate value_pop / counter_doubling / growth_bars segments, one per milestone.
 - For exponential / doubling / time-series topics you MUST use counter_doubling, growth_bars,
   value_pop, and axes_plot — not a static bullet list.
+- Exponential / doubling story rules (CRITICAL):
+  * Use ONE counter_doubling segment for the whole rice/penny/bacteria demo (start_value=1,
+    count=7 or end_value=128) — NEVER split into multiple counter_doubling segments.
+  * Do NOT use value_pop for grain counts when counter_doubling already shows the number;
+    use value_pop only for non-numeric phrases ("City block", "Warehouse").
+  * growth_bars MUST have 3–4 values with matching labels (e.g. values [1,16,128,2048],
+    labels ["Day 1","Day 4","Day 7","Day 12"]) — never a single bar.
+  * counter_doubling "label" is a unit word like "grains" or "cells" — NEVER put power
+    notation like "2^4" in label (use title "Day 5" instead).
+  * equation_morph: only real equations in "equations" — never arrows like \\downarrow.
+  * For the closing insight, use ONE quote_card (≥3s of narration) — do not stack
+    dot_grid_doubling + quote_card + highlight on the same narration line.
+  * Set continues_from_previous on segments that extend the same visual (optional; the
+    validator also infers this).
 - For geometry topics (Pythagorean theorem, triangles, area, squares), you MUST use at least
   two of: right_triangle, squares_on_sides, pythagorean_triple, area_grid.
 - If you use ANY geometry template, you MUST NOT use number_line, axes_plot, bullet_points,

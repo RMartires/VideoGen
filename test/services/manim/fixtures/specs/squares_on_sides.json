@@ -1,0 +1,7 @@
+{
+  "type": "squares_on_sides",
+  "side_a": 3,
+  "side_b": 4,
+  "title": "Squares",
+  "narration_hint": "each side"
+}

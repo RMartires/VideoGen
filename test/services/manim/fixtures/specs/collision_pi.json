@@ -1,0 +1,5 @@
+{
+  "type": "collision_pi",
+  "title": "Counting clacks",
+  "narration_hint": "blocks collide"
+}

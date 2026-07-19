@@ -1,0 +1,7 @@
+{
+  "type": "right_triangle",
+  "side_a": 3,
+  "side_b": 4,
+  "caption": "Legs a and b",
+  "narration_hint": "triangle"
+}

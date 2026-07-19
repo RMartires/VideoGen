@@ -1,0 +1,13 @@
+{
+  "type": "motion_graph_sync",
+  "function": "2 + sin(x)",
+  "x_range": [
+    0,
+    6
+  ],
+  "y_range": [
+    0,
+    4
+  ],
+  "narration_hint": "watch it move"
+}

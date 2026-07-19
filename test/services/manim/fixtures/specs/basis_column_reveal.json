@@ -1,0 +1,14 @@
+{
+  "type": "basis_column_reveal",
+  "matrix": [
+    [
+      2,
+      1
+    ],
+    [
+      0,
+      2
+    ]
+  ],
+  "narration_hint": "read the columns"
+}

@@ -1,0 +1,6 @@
+{
+  "type": "grid_tiling",
+  "rows": 3,
+  "count": 4,
+  "narration_hint": "tile the floor"
+}

@@ -1,0 +1,10 @@
+{
+  "type": "attention_arrows",
+  "title": "Attention",
+  "labels": [
+    "the",
+    "cat",
+    "sat"
+  ],
+  "narration_hint": "words attend"
+}

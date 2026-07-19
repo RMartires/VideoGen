@@ -1,0 +1,13 @@
+{
+  "type": "ftc_link",
+  "function": "x",
+  "x_range": [
+    0,
+    4
+  ],
+  "y_range": [
+    0,
+    5
+  ],
+  "narration_hint": "accumulate"
+}

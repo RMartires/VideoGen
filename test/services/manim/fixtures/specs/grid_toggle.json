@@ -1,0 +1,6 @@
+{
+  "type": "grid_toggle",
+  "title": "100 doors",
+  "count": 12,
+  "narration_hint": "toggle doors"
+}

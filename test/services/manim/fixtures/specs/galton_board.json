@@ -1,0 +1,6 @@
+{
+  "type": "galton_board",
+  "title": "Bell curve",
+  "rows": 5,
+  "narration_hint": "balls pile up"
+}

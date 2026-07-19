@@ -1,0 +1,9 @@
+{
+  "type": "venn_diagram",
+  "title": "Overlap",
+  "labels": [
+    "A",
+    "B"
+  ],
+  "narration_hint": "both at once"
+}

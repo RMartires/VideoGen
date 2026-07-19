@@ -1,0 +1,7 @@
+{
+  "type": "arc_proportion",
+  "title": "Quarter turn",
+  "numerator": 1,
+  "denominator": 4,
+  "narration_hint": "quarter of the circle"
+}

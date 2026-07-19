@@ -275,9 +275,9 @@ class RenderManimVideoTest(unittest.TestCase):
                 return result
 
             with patch(
-                "app.services.manim_video.utils.task_dir",
+                "app.services.manim.video.utils.task_dir",
                 return_value=str(task_path),
-            ), patch("app.services.manim_video.subprocess.run", side_effect=fake_run):
+            ), patch("app.services.manim.video.subprocess.run", side_effect=fake_run):
                 spec = default_spec("Vectors")
                 out = render_manim_video(
                     task_id="t1",
@@ -304,10 +304,10 @@ class RenderManimVideoTest(unittest.TestCase):
             result.stdout = "boom"
             result.stderr = "error"
             with patch(
-                "app.services.manim_video.utils.task_dir",
+                "app.services.manim.video.utils.task_dir",
                 return_value=str(task_path),
             ), patch(
-                "app.services.manim_video.subprocess.run", return_value=result
+                "app.services.manim.video.subprocess.run", return_value=result
             ):
                 with self.assertRaises(RuntimeError):
                     render_manim_video("t2", default_spec("X"))
@@ -331,12 +331,12 @@ class RenderManimVideoTest(unittest.TestCase):
                 return result
 
             with patch(
-                "app.services.manim_video.utils.task_dir",
+                "app.services.manim.video.utils.task_dir",
                 return_value=str(task_path),
             ), patch(
-                "app.services.manim_video.subprocess.run", side_effect=fake_run
+                "app.services.manim.video.subprocess.run", side_effect=fake_run
             ), patch(
-                "app.services.manim_video._probe_duration", return_value=40.0
+                "app.services.manim.video._probe_duration", return_value=40.0
             ):
                 out = render_manim_video(
                     task_id="t-short",
@@ -358,10 +358,10 @@ class RenderManimVideoTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             task_path = Path(tmp_dir)
             with patch(
-                "app.services.manim_video.utils.task_dir",
+                "app.services.manim.video.utils.task_dir",
                 return_value=str(task_path),
             ), patch(
-                "app.services.manim_video.subprocess.run",
+                "app.services.manim.video.subprocess.run",
                 side_effect=FileNotFoundError(),
             ):
                 with self.assertRaises(RuntimeError) as ctx:

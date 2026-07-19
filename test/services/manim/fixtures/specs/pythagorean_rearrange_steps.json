@@ -1,0 +1,6 @@
+{
+  "type": "pythagorean_rearrange_steps",
+  "side_a": 3,
+  "side_b": 4,
+  "narration_hint": "slide the triangles"
+}

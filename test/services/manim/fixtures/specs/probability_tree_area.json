@@ -1,0 +1,6 @@
+{
+  "type": "probability_tree_area",
+  "numerator": 0.5,
+  "denominator": 0.3,
+  "narration_hint": "branch again"
+}

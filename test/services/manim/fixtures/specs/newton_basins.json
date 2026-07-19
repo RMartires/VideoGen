@@ -1,0 +1,5 @@
+{
+  "type": "newton_basins",
+  "title": "Basins",
+  "narration_hint": "seeds find roots"
+}

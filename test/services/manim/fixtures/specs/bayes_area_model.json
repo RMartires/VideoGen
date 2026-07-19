@@ -1,0 +1,11 @@
+{
+  "type": "bayes_area_model",
+  "title": "Bayes",
+  "numerator": 0.2,
+  "denominator": 0.9,
+  "labels": [
+    "Sick",
+    "Healthy"
+  ],
+  "narration_hint": "update the belief"
+}

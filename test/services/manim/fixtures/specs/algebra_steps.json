@@ -1,0 +1,10 @@
+{
+  "type": "algebra_steps",
+  "title": "Solve",
+  "equations": [
+    "2x + 3 = 11",
+    "2x = 8",
+    "x = 4"
+  ],
+  "narration_hint": "solve for x"
+}

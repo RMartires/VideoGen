@@ -1,0 +1,19 @@
+{
+  "type": "linear_combination",
+  "title": "Combination",
+  "vectors": [
+    [
+      2,
+      1
+    ],
+    [
+      -1,
+      2
+    ]
+  ],
+  "coefficients": [
+    2,
+    1
+  ],
+  "narration_hint": "combine"
+}

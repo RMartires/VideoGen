@@ -1,0 +1,851 @@
+# Single source of truth for Manim segment types.
+#
+# Per-type keys:
+#   category:   folder under segments/ that implements it
+#   geometry:   participates in the "geometry story" (>=2 present => abstract dropped)
+#   abstract:   dropped from specs that committed to a geometry story
+#   enabled:    listed in the default LLM prompt (false => topic-gated by keywords)
+#   priority:   existing | P0 | P1 | P2
+#   source:     3b1b file the animation idea was ported from
+#   llm_fields: literal JSON-shape string shown to the LLM
+#   llm_hint:   trailing description shown to the LLM
+#   keywords:   (gated types only) subject substrings that unlock the type
+
+types:
+  title_card:
+    category: text
+    geometry: false
+    abstract: false
+    enabled: true
+    priority: existing
+    source: ""
+    llm_fields: '{ "title": str, "subtitle": str (optional), "narration_hint": str (optional) }'
+    llm_hint: ""
+
+  equation_reveal:
+    category: text
+    geometry: false
+    abstract: false
+    enabled: true
+    priority: existing
+    source: ""
+    llm_fields: '{ "caption": str (optional), "equations": [LaTeX string, ...], "narration_hint": str }'
+    llm_hint: "ANIMATED: equations write on one by one; with 2+ equations a highlight box hops between them"
+
+  step_by_step:
+    category: text
+    geometry: false
+    abstract: false
+    enabled: true
+    priority: existing
+    source: ""
+    llm_fields: '{ "title": str (optional), "steps": [str, ...], "narration_hint": str }'
+    llm_hint: "ONE step per segment when possible; steps reveal one-by-one with animation"
+
+  bullet_points:
+    category: text
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: existing
+    source: ""
+    llm_fields: '{ "title": str (optional), "points": [str, ...], "narration_hint": str }'
+    llm_hint: "ONE point per segment when possible"
+
+  axes_plot:
+    category: graphs
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: existing
+    source: "_2025/laplace/exponentials.py"
+    llm_fields: '{ "function": "python expr in x", "x_range": [min,max], "y_range": [min,max], "label": str (optional), "narration_hint": str }'
+    llm_hint: "ANIMATED: curve draws over time with a moving tracer dot and vertical drop-line"
+
+  number_line:
+    category: graphs
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: existing
+    source: "_2026/print_gallery/exponential.py"
+    llm_fields: '{ "x_range": [min,max], "label": str (optional), "vectors": [[input,output],...] (optional), "narration_hint": str (optional) }'
+    llm_hint: "ANIMATED: with vectors given, input dots hop along arcs to their outputs (function as mapping)"
+
+  right_triangle:
+    category: geometry
+    geometry: true
+    abstract: false
+    enabled: true
+    priority: existing
+    source: "_2015/pythagorean_proof.py"
+    llm_fields: '{ "side_a": number, "side_b": number, "caption": str (optional), "narration_hint": str }'
+    llm_hint: ""
+
+  squares_on_sides:
+    category: geometry
+    geometry: true
+    abstract: false
+    enabled: true
+    priority: existing
+    source: "_2015/pythagorean_proof.py"
+    llm_fields: '{ "side_a": number, "side_b": number, "title": str (optional), "narration_hint": str }'
+    llm_hint: ""
+
+  pythagorean_triple:
+    category: geometry
+    geometry: true
+    abstract: false
+    enabled: true
+    priority: existing
+    source: "_2015/pythagorean_proof.py"
+    llm_fields: '{ "side_a": number, "side_b": number, "narration_hint": str }'
+    llm_hint: 'triangle + squares + "9 + 16 = 25" summary'
+
+  squares_transform:
+    category: geometry
+    geometry: true
+    abstract: false
+    enabled: true
+    priority: existing
+    source: "once_useful_constructs/homeless.py"
+    llm_fields: '{ "side_a": number, "side_b": number, "title": str (optional), "narration_hint": str }'
+    llm_hint: 'ANIMATED: the two leg squares visibly slide onto and fill the hypotenuse square, then "9 + 16 = 25" appears'
+
+  area_grid:
+    category: geometry
+    geometry: true
+    abstract: false
+    enabled: true
+    priority: existing
+    source: "_2015/pythagorean_proof.py"
+    llm_fields: '{ "side": int, "title": str (optional), "narration_hint": str }'
+    llm_hint: "n×n grid showing area = n²; cells fill in with animation"
+
+  highlight:
+    category: meta
+    geometry: false
+    abstract: false
+    enabled: true
+    priority: existing
+    source: ""
+    llm_fields: '{ "narration_hint": str }'
+    llm_hint: "pulses whatever is already on screen; use when the narration refers back to an equation or diagram that is already displayed"
+
+  counter_doubling:
+    category: counting
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: existing
+    source: "outside_videos/tweets/powers_of_two.py"
+    llm_fields: '{ "title": str (optional), "start_value": number, "count": int (optional), "end_value": number (optional), "label": str (optional), "continues_from_previous": bool (optional), "narration_hint": str }'
+    llm_hint: 'ANIMATED: one continuous doubling counter (start_value=1, count=7 for rice-to-128); label is a unit like "grains" — never "2^4"'
+
+  growth_bars:
+    category: counting
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: existing
+    source: "_2023/clt/main.py"
+    llm_fields: '{ "title": str (optional), "values": [number, ...], "labels": [str, ...], "continues_from_previous": bool (optional), "narration_hint": str }'
+    llm_hint: "ANIMATED: 3–4 bars grow in sequence (e.g. Day 1/4/7/12 with values 1,16,128,2048) — never a single bar"
+
+  value_pop:
+    category: counting
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: existing
+    source: ""
+    llm_fields: '{ "title": str (optional), "caption": str, "narration_hint": str }'
+    llm_hint: 'ANIMATED: non-numeric milestone phrase only (e.g. "Warehouse", "City block") — not "128 grains" when counter_doubling handles counts'
+
+  # ---- Wave 1 (P0) -----------------------------------------------------
+
+  equation_morph:
+    category: text
+    geometry: false
+    abstract: false
+    enabled: true
+    priority: P0
+    source: "once_useful_constructs/arithmetic.py"
+    llm_fields: '{ "title": str (optional), "equation_from": LaTeX str, "equations": [LaTeX str, ...] (intermediate steps, optional), "equation_to": LaTeX str, "narration_hint": str }'
+    llm_hint: "ANIMATED: one equation morphs term-by-term into the next (algebra rearrangement)"
+
+  dot_grid_doubling:
+    category: counting
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P0
+    source: "outside_videos/tweets/powers_of_two.py"
+    llm_fields: '{ "title": str (optional), "start_value": int, "count": int, "narration_hint": str }'
+    llm_hint: "ANIMATED: 2^n as a growing grid of dots with a live counter; pairs with counter_doubling"
+
+  pascal_build:
+    category: counting
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P0
+    source: "once_useful_constructs/counting.py"
+    llm_fields: '{ "title": str (optional), "rows": int (3-8), "narration_hint": str }'
+    llm_hint: "ANIMATED: Pascal's triangle appears one row at a time"
+
+  grid_sieve:
+    category: counting
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P0
+    source: "outside_videos/door_puzzle.py"
+    llm_fields: '{ "title": str (optional), "count": int (numbers 1..count), "highlight_multiples_of": int, "narration_hint": str }'
+    llm_hint: "ANIMATED: numbered grid where every k-th cell lights up (multiples, sieve of Eratosthenes)"
+
+  grid_toggle:
+    category: counting
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P0
+    source: "outside_videos/door_puzzle.py"
+    llm_fields: '{ "title": str (optional), "count": int (cells), "narration_hint": str }'
+    llm_hint: "ANIMATED: door-puzzle passes — pass k toggles every k-th cell open/closed"
+
+  bar_stacking:
+    category: probability
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P0
+    source: "_2023/clt/main.py"
+    llm_fields: '{ "title": str (optional), "values": [number, ...], "labels": [str, ...], "narration_hint": str }'
+    llm_hint: "ANIMATED: outcome bars stack up unit-by-unit into a distribution shape"
+
+  sample_space_split:
+    category: probability
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P0
+    source: "_2019/bayes/part1.py"
+    llm_fields: '{ "title": str (optional), "numerator": probability 0-1, "labels": ["A", "not A"], "narration_hint": str }'
+    llm_hint: "ANIMATED: a rectangle splits into event / complement regions sized by probability"
+
+  bayes_area_model:
+    category: probability
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P0
+    source: "_2019/bayes/part1.py"
+    llm_fields: '{ "title": str (optional), "numerator": prior 0-1, "denominator": likelihood 0-1, "labels": ["H", "not H"], "narration_hint": str }'
+    llm_hint: "ANIMATED: Bayes as areas — prior split, then evidence shading each region"
+
+  fraction_pie:
+    category: probability
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P0
+    source: "once_useful_constructs/fractions.py"
+    llm_fields: '{ "title": str (optional), "numerator": int, "denominator": int (2-12), "narration_hint": str }'
+    llm_hint: "ANIMATED: a circle fills slice-by-slice to show numerator/denominator"
+
+  riemann_sum:
+    category: graphs
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P0
+    source: "once_useful_constructs/graph_scene.py"
+    llm_fields: '{ "function": "python expr in x", "x_range": [min,max], "y_range": [min,max], "label": str (optional), "narration_hint": str }'
+    llm_hint: "ANIMATED: rectangles under the curve refine 4 -> 8 -> 16 approaching the true area"
+
+  secant_to_tangent:
+    category: graphs
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P0
+    source: "_2017/eoc/chapter2.py"
+    llm_fields: '{ "function": "python expr in x", "x_range": [min,max], "y_range": [min,max], "label": str (optional), "narration_hint": str }'
+    llm_hint: "ANIMATED: a secant line slides into the tangent as dx shrinks to 0 (the derivative)"
+
+  matrix_transform_plane:
+    category: linear_algebra
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P0
+    source: "once_useful_constructs/matrix_as_transform_2d.py"
+    llm_fields: '{ "title": str (optional), "matrix": [[a,b],[c,d]], "narration_hint": str }'
+    llm_hint: "ANIMATED: a 2x2 matrix visibly warps the whole grid plane (ghost grid stays behind)"
+
+  linear_combination:
+    category: linear_algebra
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P0
+    source: "_2016/eola/chapter2.py"
+    llm_fields: '{ "title": str (optional), "vectors": [[x,y], ...], "coefficients": [number, ...] (optional), "narration_hint": str }'
+    llm_hint: "ANIMATED: scaled vectors chain tip-to-tail, then the resultant appears from the origin"
+
+  vector_sum:
+    category: complex
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P0
+    source: "_2016/eola/chapter1.py"
+    llm_fields: '{ "title": str (optional), "vectors": [[x,y], ...], "narration_hint": str }'
+    llm_hint: "ANIMATED: vectors add tip-to-tail with the sum drawn last"
+
+  euler_identity:
+    category: complex
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P0
+    source: "_2017/eulers_characteristic_formula.py"
+    llm_fields: '{ "title": str (optional), "narration_hint": str }'
+    llm_hint: 'ANIMATED: e^(iθ) walks the unit circle and lands on -1, then "e^(iπ) + 1 = 0" appears'
+
+  phasor_sum:
+    category: complex
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P0
+    source: "_2019/diffyq/part4/fourier_series.py"
+    llm_fields: '{ "title": str (optional), "count": int (2-4 arrows), "narration_hint": str }'
+    llm_hint: "ANIMATED: rotating arrows chained tip-to-tail (Fourier epicycles in miniature)"
+
+  arc_proportion:
+    category: geometry
+    geometry: true
+    abstract: false
+    enabled: true
+    priority: P0
+    source: "once_useful_constructs/geometry.py"
+    llm_fields: '{ "title": str (optional), "numerator": int, "denominator": int, "caption": str (optional), "narration_hint": str }'
+    llm_hint: "ANIMATED: an arc sweeps around a circle covering numerator/denominator of it"
+
+  shape_rearrange:
+    category: geometry
+    geometry: true
+    abstract: false
+    enabled: true
+    priority: P0
+    source: "once_useful_constructs/region.py"
+    llm_fields: '{ "title": str (optional), "caption": str (optional), "narration_hint": str }'
+    llm_hint: "ANIMATED: pieces of a square slide along arcs and reassemble into a triangle of equal area"
+
+  # ---- Wave 2 (P1) -----------------------------------------------------
+
+  algebra_steps:
+    category: text
+    geometry: false
+    abstract: false
+    enabled: true
+    priority: P1
+    source: "once_useful_constructs/arithmetic.py"
+    llm_fields: '{ "title": str (optional), "equations": [LaTeX str per derivation line, ...], "narration_hint": str }'
+    llm_hint: "ANIMATED: derivation lines appear one at a time with a pulse"
+
+  function_mapping:
+    category: text
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P1
+    source: "_2026/print_gallery/exponential.py"
+    llm_fields: '{ "labels": ["x -> 2x rule text"], "values": [inputs...], "narration_hint": str }'
+    llm_hint: "ANIMATED: inputs map to outputs with flying arrows (function as a machine)"
+
+  labeled_braces:
+    category: text
+    geometry: false
+    abstract: false
+    enabled: true
+    priority: P1
+    source: "once_useful_constructs/fractions.py"
+    llm_fields: '{ "title": str (optional), "equations": [one LaTeX str], "labels": ["below label", "above label"], "narration_hint": str }'
+    llm_hint: "ANIMATED: braces sweep under/over the equation naming each part"
+
+  quote_card:
+    category: text
+    geometry: false
+    abstract: false
+    enabled: true
+    priority: P1
+    source: ""
+    llm_fields: '{ "caption": quote text, "subtitle": attribution (optional), "narration_hint": str }'
+    llm_hint: "a styled aphorism card for memorable one-liners"
+
+  integral_bounds:
+    category: graphs
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P1
+    source: "_2017/eoc/chapter1.py"
+    llm_fields: '{ "function": "python expr in x", "x_range": [min,max], "y_range": [min,max], "label": str (optional), "narration_hint": str }'
+    llm_hint: "ANIMATED: shaded area under the curve sweeps outward as the bound moves"
+
+  ftc_link:
+    category: graphs
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P1
+    source: "_2017/eoc/chapter8.py"
+    llm_fields: '{ "function": "python expr in x", "x_range": [min,max], "y_range": [min,max], "narration_hint": str }'
+    llm_hint: "ANIMATED: area accumulates under the curve with a live numeric total (fundamental theorem)"
+
+  geometric_derivative:
+    category: graphs
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P1
+    source: "_2017/eoc/chapter3.py"
+    llm_fields: '{ "title": str (optional), "caption": str (optional), "narration_hint": str }'
+    llm_hint: "ANIMATED: x² as a literal square growing thin 2x·dx strips"
+
+  product_rule_area:
+    category: graphs
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P1
+    source: "_2017/eoc/chapter4.py"
+    llm_fields: '{ "title": str (optional), "caption": str (optional), "narration_hint": str }'
+    llm_hint: "ANIMATED: d(ab) as an a×b rectangle growing a·db and b·da strips"
+
+  gradient_field:
+    category: graphs
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P1
+    source: "_2018/div_curl.py"
+    llm_fields: '{ "title": str (optional), "narration_hint": str }'
+    llm_hint: "ANIMATED: a field of arrows fades in showing downhill directions"
+
+  motion_graph_sync:
+    category: graphs
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P1
+    source: "_2017/eoc/chapter2.py"
+    llm_fields: '{ "function": "python expr in x", "x_range": [min,max], "y_range": [min,max], "narration_hint": str }'
+    llm_hint: "ANIMATED: a dot moves along a track while its graph traces in sync"
+
+  phase_portrait:
+    category: graphs
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P1
+    source: "_2019/diffyq/part1/main.py"
+    llm_fields: '{ "title": str (optional), "narration_hint": str }'
+    llm_hint: "ANIMATED: a vector field appears, then a trajectory spirals through it"
+
+  pythagorean_rearrange_steps:
+    category: geometry
+    geometry: true
+    abstract: false
+    enabled: true
+    priority: P1
+    source: "_2015/pythagorean_proof.py"
+    llm_fields: '{ "side_a": number, "side_b": number, "title": str (optional), "narration_hint": str }'
+    llm_hint: "ANIMATED: four triangles slide inside the (a+b)² square, turning the c² hole into a² + b²"
+
+  proof_zoom_detail:
+    category: geometry
+    geometry: true
+    abstract: false
+    enabled: true
+    priority: P1
+    source: "once_useful_constructs/fractals.py"
+    llm_fields: '{ "side_a": number, "side_b": number, "title": str (optional), "narration_hint": str }'
+    llm_hint: "ANIMATED: a magnifier circle sweeps between the diagram's key corners"
+
+  venn_diagram:
+    category: geometry
+    geometry: false
+    abstract: false
+    enabled: true
+    priority: P1
+    source: "once_useful_constructs/region.py"
+    llm_fields: '{ "title": str (optional), "labels": ["A", "B"], "narration_hint": str }'
+    llm_hint: "ANIMATED: two circles overlap and the intersection lights up"
+
+  jacobian_parallelogram:
+    category: geometry
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P1
+    source: "_2018/multivariable/jacobian.py"
+    llm_fields: '{ "title": str (optional), "matrix": [[a,b],[c,d]] (optional), "narration_hint": str }'
+    llm_hint: "ANIMATED: the unit square shears into a parallelogram with its area factor"
+
+  curve_unroll:
+    category: geometry
+    geometry: true
+    abstract: false
+    enabled: true
+    priority: P1
+    source: "_2015/circle_division.py"
+    llm_fields: '{ "title": str (optional), "caption": str (optional), "narration_hint": str }'
+    llm_hint: "ANIMATED: a circle's circumference unrolls onto a straight line (2πr)"
+
+  conformal_warp:
+    category: geometry
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P1
+    source: "_2018/winding_number.py"
+    llm_fields: '{ "title": str (optional), "narration_hint": str }'
+    llm_hint: "ANIMATED: the whole grid bends smoothly under z -> z² keeping right angles"
+
+  place_value_counter:
+    category: counting
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P1
+    source: "once_useful_constructs/counting.py"
+    llm_fields: '{ "title": str (optional), "start_value": int, "count": int, "caption": str (optional), "narration_hint": str }'
+    llm_hint: "ANIMATED: an odometer counts up, showing digits carrying over"
+
+  pascal_row_build:
+    category: counting
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P1
+    source: "once_useful_constructs/counting.py"
+    llm_fields: '{ "title": str (optional), "rows": int (which row), "narration_hint": str }'
+    llm_hint: "ANIMATED: one Pascal row emerges from sums of the row above"
+
+  counting_dots_match:
+    category: counting
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P1
+    source: "once_useful_constructs/counting.py"
+    llm_fields: '{ "title": str (optional), "count": int, "narration_hint": str }'
+    llm_hint: "ANIMATED: two columns of dots pair up line by line (bijection = same count)"
+
+  grid_tiling:
+    category: counting
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P1
+    source: "outside_videos/tweets/grid_tilings.py"
+    llm_fields: '{ "title": str (optional), "rows": int, "count": int (columns), "narration_hint": str }'
+    llm_hint: "ANIMATED: tiles fill a rows×cols rectangle one at a time (area as tiling)"
+
+  probability_bar:
+    category: probability
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P1
+    source: "_2019/bayes/part1.py"
+    llm_fields: '{ "title": str (optional), "numerator": probability 0-1, "caption": str (optional), "narration_hint": str }'
+    llm_hint: "ANIMATED: a 0-to-1 bar fills to the probability value"
+
+  probability_tree_area:
+    category: probability
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P1
+    source: "_2019/bayes/part2.py"
+    llm_fields: '{ "title": str (optional), "numerator": first split 0-1, "denominator": second split 0-1, "narration_hint": str }'
+    llm_hint: "ANIMATED: a probability tree grows branch by branch, thickness = probability"
+
+  binomial_to_histogram:
+    category: probability
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P1
+    source: "_2023/clt/main.py"
+    llm_fields: '{ "title": str (optional), "count": int (trials 4-10), "narration_hint": str }'
+    llm_hint: "ANIMATED: binomial bars rise one by one into a bell shape"
+
+  dice_histogram:
+    category: probability
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P1
+    source: "_2023/clt/main.py"
+    llm_fields: '{ "title": str (optional), "narration_hint": str }'
+    llm_hint: "ANIMATED: two-dice sums build a triangle-shaped histogram bar by bar"
+
+  discrete_to_continuous:
+    category: probability
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P1
+    source: "_2023/clt/main.py"
+    llm_fields: '{ "title": str (optional), "narration_hint": str }'
+    llm_hint: "ANIMATED: histogram bars rise, then a smooth bell curve drapes over their tops"
+
+  convolution_graph:
+    category: probability
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P1
+    source: "_2022/convolutions/discrete.py"
+    llm_fields: '{ "title": str (optional), "narration_hint": str }'
+    llm_hint: "ANIMATED: one bump slides across another (convolution as a moving overlap)"
+
+  basis_column_reveal:
+    category: linear_algebra
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P1
+    source: "_2016/eola/chapter3.py"
+    llm_fields: '{ "title": str (optional), "matrix": [[a,b],[c,d]], "narration_hint": str }'
+    llm_hint: "ANIMATED: each matrix column lights up as its basis arrow moves there"
+
+  transform_composition:
+    category: linear_algebra
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P1
+    source: "_2016/eola/chapter4.py"
+    llm_fields: '{ "title": str (optional), "matrix": [[a,b],[c,d]] (first transform), "narration_hint": str }'
+    llm_hint: "ANIMATED: the plane warps under one matrix, then a rotation follows (composition)"
+
+  determinant_area:
+    category: linear_algebra
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P1
+    source: "_2016/eola/chapter5.py"
+    llm_fields: '{ "title": str (optional), "matrix": [[a,b],[c,d]], "narration_hint": str }'
+    llm_hint: "ANIMATED: the unit square warps and its area factor (the determinant) appears"
+
+  eigenvector_demo:
+    category: linear_algebra
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P1
+    source: "_2016/eola/chapter10.py"
+    llm_fields: '{ "title": str (optional), "narration_hint": str }'
+    llm_hint: "ANIMATED: most vectors swing around; eigenvectors only stretch along their line"
+
+  matrix_multiply:
+    category: linear_algebra
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P1
+    source: "_2016/eola/chapter4.py"
+    llm_fields: '{ "title": str (optional), "matrix": [[a,b],[c,d]], "narration_hint": str }'
+    llm_hint: "ANIMATED: row and column highlight together as each product entry appears"
+
+  vector_field:
+    category: linear_algebra
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P1
+    source: "_2018/div_curl.py"
+    llm_fields: '{ "title": str (optional), "narration_hint": str }'
+    llm_hint: "ANIMATED: a swirling arrow field fades in ring by ring"
+
+  complex_multiply:
+    category: complex
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P1
+    source: "_2018/winding_number.py"
+    llm_fields: '{ "title": str (optional), "narration_hint": str }'
+    llm_hint: "ANIMATED: multiplying by i then by 1+i rotates and stretches an arrow"
+
+  fourier_epicycles:
+    category: fourier
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P1
+    source: "_2019/diffyq/part4/fourier_series.py"
+    llm_fields: '{ "title": str (optional), "count": int (2-4 circles), "narration_hint": str }'
+    llm_hint: "ANIMATED: chained rotating arrows trace a curve (Fourier drawing machine)"
+
+  wave_superposition:
+    category: fourier
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P1
+    source: "_2019/diffyq/part4/fourier_series.py"
+    llm_fields: '{ "title": str (optional), "narration_hint": str }'
+    llm_hint: "ANIMATED: two sine waves visibly add into a richer combined wave"
+
+  fft_spectrum:
+    category: fourier
+    geometry: false
+    abstract: true
+    enabled: true
+    priority: P1
+    source: "_2022/convolutions/fft.py"
+    llm_fields: '{ "title": str (optional), "narration_hint": str }'
+    llm_hint: "ANIMATED: a wiggly signal on top, its frequency bars rise below"
+
+  # ---- P2 niche types (topic-gated: enabled false, unlocked by keywords) ----
+
+  galton_board:
+    category: niche
+    geometry: false
+    abstract: true
+    enabled: false
+    priority: P2
+    source: "_2019/gaussian/galton.py"
+    keywords: ["galton", "normal distribution", "bell curve", "central limit", "gaussian", "random walk"]
+    llm_fields: '{ "title": str (optional), "rows": int (3-7), "narration_hint": str }'
+    llm_hint: "ANIMATED: balls bounce down a peg board and pile into a bell curve"
+
+  state_vector:
+    category: niche
+    geometry: false
+    abstract: true
+    enabled: false
+    priority: P2
+    source: "_2019/diffyq/part2/wordy_scenes.py"
+    keywords: ["phase space", "state vector", "pendulum", "oscillator", "differential equation"]
+    llm_fields: '{ "title": str (optional), "narration_hint": str }'
+    llm_hint: "ANIMATED: a state point orbits phase space (position vs velocity)"
+
+  collision_pi:
+    category: niche
+    geometry: false
+    abstract: true
+    enabled: false
+    priority: P2
+    source: "_2019/clacks/question.py"
+    keywords: ["collision", "clacks", "digits of pi", "blocks", "elastic"]
+    llm_fields: '{ "title": str (optional), "narration_hint": str }'
+    llm_hint: "ANIMATED: two blocks bounce between each other and a wall, counter ticks up"
+
+  fractal_iterate:
+    category: niche
+    geometry: false
+    abstract: true
+    enabled: false
+    priority: P2
+    source: "_2017/fractal_dimension.py"
+    keywords: ["fractal", "koch", "snowflake", "self-similar", "iteration"]
+    llm_fields: '{ "title": str (optional), "narration_hint": str }'
+    llm_hint: "ANIMATED: a line gains fractal detail one Koch iteration at a time"
+
+  fractal_zoom:
+    category: niche
+    geometry: false
+    abstract: true
+    enabled: false
+    priority: P2
+    source: "_2017/fractal_dimension.py"
+    keywords: ["fractal", "zoom", "self-similar", "infinite detail", "mandelbrot"]
+    llm_fields: '{ "title": str (optional), "narration_hint": str }'
+    llm_hint: "ANIMATED: zooming into nested squares reveals the same shape again"
+
+  spiral_growth:
+    category: niche
+    geometry: false
+    abstract: true
+    enabled: false
+    priority: P2
+    source: "_2020/beta/pi_creature_scenes.py"
+    keywords: ["golden ratio", "fibonacci", "spiral", "phyllotaxis", "sunflower"]
+    llm_fields: '{ "title": str (optional), "count": int (20-120), "narration_hint": str }'
+    llm_hint: "ANIMATED: dots spiral outward at the golden angle into a sunflower pattern"
+
+  discrete_convolution:
+    category: niche
+    geometry: false
+    abstract: true
+    enabled: false
+    priority: P2
+    source: "_2022/convolutions/discrete.py"
+    keywords: ["convolution", "sliding window", "signal", "filter", "moving average"]
+    llm_fields: '{ "title": str (optional), "values": [num,...], "coefficients": [num,...], "narration_hint": str }'
+    llm_hint: "ANIMATED: a kernel slides across a sequence, output bars appear one by one"
+
+  network_flow:
+    category: niche
+    geometry: false
+    abstract: true
+    enabled: false
+    priority: P2
+    source: "_2017/nn/network.py"
+    keywords: ["neural network", "network", "graph", "nodes", "layers", "deep learning"]
+    llm_fields: '{ "title": str (optional), "rows": int (2-4 layers), "count": int (2-4 per layer), "narration_hint": str }'
+    llm_hint: "ANIMATED: pulses travel along the edges of a layered network"
+
+  attention_arrows:
+    category: niche
+    geometry: false
+    abstract: true
+    enabled: false
+    priority: P2
+    source: "_2024/transformers/attention.py"
+    keywords: ["attention", "transformer", "token", "language model", "gpt"]
+    llm_fields: '{ "title": str (optional), "labels": [word,...], "narration_hint": str }'
+    llm_hint: "ANIMATED: each word sends weighted attention arcs to the other words"
+
+  parallax_demo:
+    category: niche
+    geometry: false
+    abstract: true
+    enabled: false
+    priority: P2
+    source: "_2019/cosmic_distance.py"
+    keywords: ["parallax", "astronomy", "distance", "stars", "depth"]
+    llm_fields: '{ "title": str (optional), "narration_hint": str }'
+    llm_hint: "ANIMATED: near dots slide farther than far dots, showing depth from motion"
+
+  newton_basins:
+    category: niche
+    geometry: false
+    abstract: true
+    enabled: false
+    priority: P2
+    source: "_2021/newton_fractal.py"
+    keywords: ["newton", "root finding", "basin", "convergence", "iteration"]
+    llm_fields: '{ "title": str (optional), "narration_hint": str }'
+    llm_hint: "ANIMATED: seed points slide to whichever root attracts them"
+
+  interval_subdivision:
+    category: niche
+    geometry: false
+    abstract: true
+    enabled: false
+    priority: P2
+    source: "_2019/five/unsolvability/intro.py"
+    keywords: ["bisection", "interval", "subdivision", "binary search", "halving"]
+    llm_fields: '{ "title": str (optional), "count": int (3-6), "narration_hint": str }'
+    llm_hint: "ANIMATED: an interval is halved again and again, closing in on a point"

@@ -1,0 +1,11 @@
+{
+  "type": "labeled_braces",
+  "equations": [
+    "a^2 + b^2 = c^2"
+  ],
+  "labels": [
+    "the legs",
+    "the hypotenuse"
+  ],
+  "narration_hint": "name the parts"
+}

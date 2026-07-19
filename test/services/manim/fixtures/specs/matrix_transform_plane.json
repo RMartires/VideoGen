@@ -1,0 +1,15 @@
+{
+  "type": "matrix_transform_plane",
+  "title": "Shear",
+  "matrix": [
+    [
+      1,
+      1
+    ],
+    [
+      0,
+      1
+    ]
+  ],
+  "narration_hint": "warp the plane"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "dot_grid_doubling",
+  "title": "Doubling dots",
+  "start_value": 2,
+  "count": 5,
+  "narration_hint": "dots double"
+}

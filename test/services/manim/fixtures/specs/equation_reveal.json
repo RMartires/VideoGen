@@ -1,0 +1,8 @@
+{
+  "type": "equation_reveal",
+  "caption": "The balance",
+  "equations": [
+    "a^2 + b^2 = c^2"
+  ],
+  "narration_hint": "a squared plus b squared"
+}

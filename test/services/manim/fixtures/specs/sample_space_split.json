@@ -1,0 +1,10 @@
+{
+  "type": "sample_space_split",
+  "title": "Sample space",
+  "numerator": 0.3,
+  "labels": [
+    "Rain",
+    "No rain"
+  ],
+  "narration_hint": "split the space"
+}

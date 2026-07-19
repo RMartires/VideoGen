@@ -1,0 +1,14 @@
+{
+  "type": "riemann_sum",
+  "function": "x**2 / 2",
+  "x_range": [
+    0,
+    4
+  ],
+  "y_range": [
+    0,
+    8
+  ],
+  "label": "area",
+  "narration_hint": "rectangles"
+}

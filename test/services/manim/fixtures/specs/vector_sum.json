@@ -1,0 +1,15 @@
+{
+  "type": "vector_sum",
+  "title": "Adding vectors",
+  "vectors": [
+    [
+      2,
+      1
+    ],
+    [
+      1,
+      2
+    ]
+  ],
+  "narration_hint": "tip to tail"
+}

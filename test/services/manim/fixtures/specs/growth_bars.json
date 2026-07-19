@@ -1,0 +1,15 @@
+{
+  "type": "growth_bars",
+  "title": "Growth",
+  "values": [
+    2,
+    20,
+    200
+  ],
+  "labels": [
+    "Day 1",
+    "Day 10",
+    "Day 20"
+  ],
+  "narration_hint": "day by day"
+}

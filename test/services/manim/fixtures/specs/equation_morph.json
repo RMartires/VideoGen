@@ -1,0 +1,7 @@
+{
+  "type": "equation_morph",
+  "title": "Rearranging",
+  "equation_from": "a^2 + b^2 = c^2",
+  "equation_to": "c^2 - a^2 = b^2",
+  "narration_hint": "move the term"
+}

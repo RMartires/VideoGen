@@ -1,0 +1,9 @@
+{
+  "type": "step_by_step",
+  "title": "Steps",
+  "steps": [
+    "Draw a triangle",
+    "Square each side"
+  ],
+  "narration_hint": "first draw"
+}

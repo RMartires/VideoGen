@@ -1,0 +1,9 @@
+{
+  "type": "number_line",
+  "x_range": [
+    0,
+    10
+  ],
+  "label": "doubling",
+  "narration_hint": "the line"
+}

@@ -1,0 +1,13 @@
+{
+  "type": "secant_to_tangent",
+  "function": "x**2 / 2",
+  "x_range": [
+    0,
+    4
+  ],
+  "y_range": [
+    0,
+    8
+  ],
+  "narration_hint": "slope"
+}

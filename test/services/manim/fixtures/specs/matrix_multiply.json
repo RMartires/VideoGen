@@ -1,0 +1,14 @@
+{
+  "type": "matrix_multiply",
+  "matrix": [
+    [
+      1,
+      2
+    ],
+    [
+      3,
+      4
+    ]
+  ],
+  "narration_hint": "row times column"
+}

@@ -1,0 +1,6 @@
+{
+  "type": "place_value_counter",
+  "start_value": 7,
+  "count": 6,
+  "narration_hint": "count past ten"
+}

@@ -1,0 +1,5 @@
+{
+  "type": "discrete_to_continuous",
+  "title": "To the bell",
+  "narration_hint": "smooth it out"
+}

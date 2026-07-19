@@ -1,0 +1,16 @@
+{
+  "type": "discrete_convolution",
+  "title": "Sliding kernel",
+  "values": [
+    1,
+    2,
+    3,
+    2,
+    1
+  ],
+  "coefficients": [
+    1,
+    1
+  ],
+  "narration_hint": "slide across"
+}

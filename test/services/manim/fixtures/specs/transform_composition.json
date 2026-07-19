@@ -1,0 +1,14 @@
+{
+  "type": "transform_composition",
+  "matrix": [
+    [
+      1,
+      1
+    ],
+    [
+      0,
+      1
+    ]
+  ],
+  "narration_hint": "then rotate"
+}
