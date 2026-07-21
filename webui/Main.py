@@ -905,6 +905,7 @@ with middle_panel:
             (tr("Pixabay"), "pixabay"),
             (tr("Coverr"), "coverr"),
             (tr("Manim (Math)"), "manim"),
+            (tr("Reddit Story"), "reddit"),
             (tr("Local file"), "local"),
             (tr("TikTok"), "douyin"),
             (tr("Bilibili"), "bilibili"),
@@ -912,9 +913,10 @@ with middle_panel:
         ]
 
         saved_video_source_name = config.app.get("video_source", "pexels")
-        saved_video_source_index = [v[1] for v in video_sources].index(
-            saved_video_source_name
-        )
+        source_values = [v[1] for v in video_sources]
+        if saved_video_source_name not in source_values:
+            saved_video_source_name = "pexels"
+        saved_video_source_index = source_values.index(saved_video_source_name)
 
         selected_index = st.selectbox(
             tr("Video Source"),
@@ -933,6 +935,78 @@ with middle_panel:
                 type=local_file_types + [file_type.upper() for file_type in local_file_types],
                 accept_multiple_files=True,
             )
+
+        if params.video_source == "reddit":
+            from app.services.reddit.cards import list_gameplay_files
+            from app.services.reddit.compose import resolve_gameplay_dir
+            from app.services.reddit.fetch import oauth_configured
+
+            reddit_cfg = getattr(config, "reddit", None) or {}
+            params.reddit_url = st.text_input(
+                tr("Reddit Post URL"),
+                value=st.session_state.get("reddit_url", ""),
+                placeholder="https://www.reddit.com/r/.../comments/...",
+                key="reddit_url",
+            ).strip()
+            if oauth_configured():
+                st.caption(tr("Reddit OAuth Configured"))
+            else:
+                st.caption(tr("Reddit Public JSON Fallback"))
+            default_comment_limit = int(
+                reddit_cfg.get("comment_limit", 5) or 5
+            )
+            params.reddit_comment_limit = st.slider(
+                tr("Reddit Comment Limit"),
+                min_value=1,
+                max_value=15,
+                value=int(
+                    st.session_state.get(
+                        "reddit_comment_limit", default_comment_limit
+                    )
+                ),
+                key="reddit_comment_limit",
+            )
+            default_gameplay = str(
+                reddit_cfg.get("gameplay_dir", "resource/gameplay")
+            )
+            params.reddit_gameplay_dir = st.text_input(
+                tr("Gameplay Folder"),
+                value=st.session_state.get(
+                    "reddit_gameplay_dir", default_gameplay
+                ),
+                help=tr("Gameplay Folder Help"),
+                key="reddit_gameplay_dir",
+            ).strip()
+            gameplay_files = list_gameplay_files(
+                resolve_gameplay_dir(params)
+            )
+            if gameplay_files:
+                st.caption(
+                    tr("Gameplay Clips Found").format(count=len(gameplay_files))
+                )
+            else:
+                st.warning(tr("No Gameplay Clips Found"))
+            if st.button(tr("Fetch Reddit Script"), key="fetch_reddit_script"):
+                if not params.reddit_url:
+                    st.error(tr("Please Enter a Reddit Post URL"))
+                else:
+                    with st.spinner(tr("Fetching Reddit Post")):
+                        try:
+                            from app.services import reddit as reddit_service
+
+                            script, post = reddit_service.build_script_from_url(
+                                params.reddit_url,
+                                comment_limit=params.reddit_comment_limit,
+                            )
+                            st.session_state["video_script"] = script
+                            st.session_state["video_subject"] = post.title
+                            st.session_state["video_terms"] = ""
+                            st.success(tr("Reddit Script Fetched"))
+                        except Exception as exc:
+                            st.error(str(exc))
+            # Reddit story cards sit in the upper half; keep captions near the bottom.
+            if "subtitle_position" not in st.session_state:
+                st.session_state["subtitle_position"] = "bottom"
 
         selected_index = st.selectbox(
             tr("Video Concat Mode"),
@@ -1687,12 +1761,36 @@ start_button = st.button(tr("Generate Video"), use_container_width=True, type="p
 if start_button:
     config.save_config()
     task_id = str(uuid4())
+
+    if params.video_source == "reddit":
+        from app.services.reddit.cards import list_gameplay_files
+        from app.services.reddit.compose import resolve_gameplay_dir
+
+        if not (params.reddit_url or "").strip():
+            st.error(tr("Please Enter a Reddit Post URL"))
+            scroll_to_bottom()
+            st.stop()
+        gameplay_files = list_gameplay_files(resolve_gameplay_dir(params))
+        if not gameplay_files:
+            st.error(tr("No Gameplay Clips Found"))
+            scroll_to_bottom()
+            st.stop()
+        if not params.video_subject:
+            params.video_subject = "Reddit Story"
+
     if not params.video_subject and not params.video_script:
         st.error(tr("Video Script and Subject Cannot Both Be Empty"))
         scroll_to_bottom()
         st.stop()
 
-    if params.video_source not in ["pexels", "pixabay", "coverr", "local", "manim"]:
+    if params.video_source not in [
+        "pexels",
+        "pixabay",
+        "coverr",
+        "local",
+        "manim",
+        "reddit",
+    ]:
         st.error(tr("Please Select a Valid Video Source"))
         scroll_to_bottom()
         st.stop()

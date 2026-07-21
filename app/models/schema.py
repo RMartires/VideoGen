@@ -87,7 +87,12 @@ class VideoParams(BaseModel):
     # Optional styling overrides for video_source="manim" (math-explainer visuals).
     manim_accent_color: Optional[str] = None
     manim_background_color: Optional[str] = None
-    
+    # Optional settings for video_source="reddit" (Short.ai-style Reddit story).
+    reddit_url: Optional[str] = None
+    reddit_comment_limit: int = Field(default=5, ge=1, le=15)
+    reddit_theme: str = "dark"
+    reddit_gameplay_dir: Optional[str] = None
+
     custom_audio_file: Optional[str] = None  # Custom audio file path, will ignore TTS and can still use Whisper subtitles
     video_language: Optional[str] = ""  # auto detect
 

@@ -166,6 +166,16 @@ azure = _cfg.get("azure", {})
 siliconflow = _cfg.get("siliconflow", {})
 elevenlabs = _cfg.get("elevenlabs", {})
 chatterbox = _cfg.get("chatterbox", {})
+reddit = _cfg.get(
+    "reddit",
+    {
+        "gameplay_dir": "resource/gameplay",
+        "comment_limit": 5,
+        "user_agent": "MoneyPrinterTurbo/1.3 (Reddit story mode)",
+        "client_id": "",
+        "client_secret": "",
+    },
+)
 ui = _cfg.get(
     "ui",
     {

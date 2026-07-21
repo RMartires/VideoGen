@@ -432,6 +432,20 @@ upload_post_auto_upload = false
 # YouTube Shorts privacy status (options: "public", "unlisted", "private")
 upload_post_youtube_privacy_status = "public"
 
+########## Reddit Story Mode (video_source = "reddit")
+# Short.ai-style Reddit story videos: paste a post URL, fetch title/body/comments,
+# narrate with TTS, and overlay Reddit-style cards on local gameplay footage.
+# Put at least one .mp4/.mov/.mkv clip in gameplay_dir (Minecraft / subway-surfers
+# style loops work best). Do not commit copyrighted gameplay assets to the repo.
+[reddit]
+gameplay_dir = "resource/gameplay"
+comment_limit = 5
+user_agent = "MoneyPrinterTurbo/1.3 (Reddit story mode)"
+# Optional script-app credentials (https://www.reddit.com/prefs/apps — type: script).
+# When set, fetch uses OAuth client-credentials; otherwise falls back to public .json.
+client_id = ""
+client_secret = ""
+
 # Chatterbox TTS (self-hosted, OpenAI-compatible) ##########################
 # Chatterbox (https://github.com/resemble-ai/chatterbox, MIT) is an open-source,
 # locally hosted TTS model with zero-shot voice cloning — a self-hostable

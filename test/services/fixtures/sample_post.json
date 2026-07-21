@@ -1,0 +1,64 @@
+[
+  {
+    "kind": "Listing",
+    "data": {
+      "children": [
+        {
+          "kind": "t3",
+          "data": {
+            "id": "abc123",
+            "subreddit": "AskReddit",
+            "title": "What is a story that always sticks with you?",
+            "selftext": "Once upon a time, something unexpected happened and it changed everything.",
+            "author": "storyteller",
+            "score": 15200,
+            "permalink": "/r/AskReddit/comments/abc123/what_is_a_story/"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "kind": "Listing",
+    "data": {
+      "children": [
+        {
+          "kind": "t1",
+          "data": {
+            "author": "AutoModerator",
+            "body": "Please follow the rules.",
+            "score": 1,
+            "stickied": true
+          }
+        },
+        {
+          "kind": "t1",
+          "data": {
+            "author": "helpful_user",
+            "body": "This reminds me of the time I learned an important lesson.",
+            "score": 4200,
+            "stickied": false
+          }
+        },
+        {
+          "kind": "t1",
+          "data": {
+            "author": "[deleted]",
+            "body": "[removed]",
+            "score": 10,
+            "stickied": false
+          }
+        },
+        {
+          "kind": "t1",
+          "data": {
+            "author": "another_voice",
+            "body": "I never expected the plot twist at the end.",
+            "score": 980,
+            "stickied": false
+          }
+        }
+      ]
+    }
+  }
+]

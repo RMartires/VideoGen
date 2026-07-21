@@ -41,3 +41,7 @@ streamlit.log
 # Local 3b1b reference clones (not part of this project; use pip manim package)
 /manim/
 /videos/
+
+# Local gameplay footage for Reddit Story mode (do not commit large/copyrighted clips)
+/resource/gameplay/*
+!/resource/gameplay/.gitkeep

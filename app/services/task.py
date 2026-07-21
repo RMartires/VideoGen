@@ -13,6 +13,7 @@ from app.services import (
     llm,
     manim_video,
     material,
+    reddit,
     subtitle,
     twelvelabs,
     video,
@@ -23,19 +24,90 @@ from app.services import state as sm
 from app.utils import file_security, utils
 
 
+def _persist_reddit_post(task_id: str, post) -> None:
+    import json
+
+    post_file = path.join(utils.task_dir(task_id), "reddit_post.json")
+    with open(post_file, "w", encoding="utf-8") as fp:
+        json.dump(post.to_dict(), fp, ensure_ascii=False, indent=2)
+
+
+def _load_reddit_post(task_id: str):
+    import json
+
+    from app.services.reddit.fetch import RedditPost
+
+    post_file = path.join(utils.task_dir(task_id), "reddit_post.json")
+    if not path.isfile(post_file):
+        return None
+    with open(post_file, encoding="utf-8") as fp:
+        return RedditPost.from_dict(json.load(fp))
+
+
 def generate_script(task_id, params):
     logger.info("\n\n## generating video script")
     video_script = params.video_script.strip()
     if not video_script:
-        video_script = llm.generate_script(
-            video_subject=params.video_subject,
-            language=params.video_language,
-            paragraph_number=params.paragraph_number,
-            video_script_prompt=params.video_script_prompt,
-            custom_system_prompt=params.custom_system_prompt,
-        )
+        if params.video_source == "reddit":
+            existing = _load_reddit_post(task_id)
+            if existing is not None:
+                from app.services.reddit.script import build_script_from_post
+
+                video_script = build_script_from_post(existing)
+                if existing.title and (
+                    not params.video_subject
+                    or params.video_subject.strip().lower() in {"reddit", "reddit story"}
+                ):
+                    params.video_subject = existing.title
+            else:
+                reddit_url = (getattr(params, "reddit_url", None) or "").strip()
+                if not reddit_url:
+                    sm.state.update_task(task_id, state=const.TASK_STATE_FAILED)
+                    logger.error("reddit_url is required when video_source=reddit")
+                    return None
+                try:
+                    comment_limit = getattr(params, "reddit_comment_limit", None)
+                    video_script, post = reddit.build_script_from_url(
+                        reddit_url, comment_limit=comment_limit
+                    )
+                    _persist_reddit_post(task_id, post)
+                    if post.title and (
+                        not params.video_subject
+                        or params.video_subject.strip().lower()
+                        in {"reddit", "reddit story"}
+                    ):
+                        params.video_subject = post.title
+                except Exception as exc:
+                    sm.state.update_task(task_id, state=const.TASK_STATE_FAILED)
+                    logger.error(f"failed to fetch Reddit post: {exc}")
+                    return None
+        else:
+            video_script = llm.generate_script(
+                video_subject=params.video_subject,
+                language=params.video_language,
+                paragraph_number=params.paragraph_number,
+                video_script_prompt=params.video_script_prompt,
+                custom_system_prompt=params.custom_system_prompt,
+            )
     else:
         logger.debug(f"video script: \n{video_script}")
+        # Custom script still needs post metadata for card rendering in reddit mode.
+        if params.video_source == "reddit" and _load_reddit_post(task_id) is None:
+            reddit_url = (getattr(params, "reddit_url", None) or "").strip()
+            if not reddit_url:
+                sm.state.update_task(task_id, state=const.TASK_STATE_FAILED)
+                logger.error("reddit_url is required when video_source=reddit")
+                return None
+            try:
+                post = reddit.fetch_post(
+                    reddit_url,
+                    comment_limit=getattr(params, "reddit_comment_limit", None),
+                )
+                _persist_reddit_post(task_id, post)
+            except Exception as exc:
+                sm.state.update_task(task_id, state=const.TASK_STATE_FAILED)
+                logger.error(f"failed to fetch Reddit post metadata: {exc}")
+                return None
 
     if not video_script:
         sm.state.update_task(task_id, state=const.TASK_STATE_FAILED)
@@ -195,7 +267,7 @@ def generate_audio(task_id, params, video_script):
             return None, None, None
         return custom_audio_file, audio_duration, None
 
-def generate_subtitle(task_id, params, video_script, sub_maker, audio_file):
+def generate_subtitle(task_id, params, video_script, sub_maker, audio_file, audio_duration=None):
     '''
     Generate subtitle for the video script.
     If subtitle generation is disabled or no subtitle maker is provided, it will return an empty string.
@@ -207,11 +279,43 @@ def generate_subtitle(task_id, params, video_script, sub_maker, audio_file):
     if not params.subtitle_enabled:
         return ""
 
+    subtitle_path = path.join(utils.task_dir(task_id), "subtitle.srt")
+
+    # Reddit mode: one cue per narration segment (current spoken chunk), not
+    # Whisper/edge full-script captions that duplicate the on-screen cards.
+    if params.video_source == "reddit":
+        from app.services.reddit.script import (
+            allocate_segment_times,
+            narration_segments,
+            write_segment_subtitles,
+        )
+
+        post = _load_reddit_post(task_id)
+        if post is None:
+            logger.warning("reddit post metadata missing; skipping segment subtitles")
+            return ""
+        duration = float(audio_duration or 0.0)
+        if duration <= 0 and audio_file and path.isfile(audio_file):
+            try:
+                duration = float(voice.get_audio_duration(audio_file))
+            except Exception:
+                duration = 0.0
+        if duration <= 0:
+            logger.warning("reddit subtitle timing unavailable; skipping subtitles")
+            return ""
+        segments = allocate_segment_times(narration_segments(post), duration)
+        write_segment_subtitles(segments, subtitle_path)
+        subtitle_lines = subtitle.file_to_subtitles(subtitle_path)
+        if not subtitle_lines:
+            logger.warning(f"subtitle file is invalid: {subtitle_path}")
+            return ""
+        logger.info(f"reddit segment subtitles written: {len(subtitle_lines)} cues")
+        return subtitle_path
+
     subtitle_script = video_script
     if voice.is_chatterbox_voice(params.voice_name):
         subtitle_script = voice.strip_chatterbox_tags(video_script)
 
-    subtitle_path = path.join(utils.task_dir(task_id), "subtitle.srt")
     subtitle_provider = config.app.get("subtitle_provider", "edge").strip().lower()
     logger.info(f"\n\n## generating subtitle, provider: {subtitle_provider}")
 
@@ -293,6 +397,18 @@ def get_video_materials(
             logger.error(f"failed to render manim scene: {exc}")
             return None
         return [scene_path]
+    elif params.video_source == "reddit":
+        logger.info("\n\n## composing Reddit story video")
+        try:
+            return reddit.build_reddit_video(
+                task_id=task_id,
+                params=params,
+                audio_duration=audio_duration,
+            )
+        except Exception as exc:
+            sm.state.update_task(task_id, state=const.TASK_STATE_FAILED)
+            logger.error(f"failed to compose Reddit story video: {exc}")
+            return None
     else:
         logger.info(f"\n\n## downloading videos from {params.video_source}")
         # 顺序匹配模式只在用户显式开启时生效。这里强制素材下载按关键词顺序
@@ -327,8 +443,8 @@ def generate_final_videos(
     combined_video_paths = []
     # 多视频生成默认会打散素材以增加差异；但“按文案顺序匹配素材”追求的是
     # 时间线稳定性和可解释性，所以开启后所有输出都使用顺序拼接。
-    # manim 讲解视频的画面本身就有先后逻辑，必须顺序拼接，否则会打乱讲解步骤。
-    if params.match_materials_to_script or params.video_source == "manim":
+    # manim / reddit 讲解视频的画面本身就有先后逻辑，必须顺序拼接，否则会打乱讲解步骤。
+    if params.match_materials_to_script or params.video_source in ("manim", "reddit"):
         video_concat_mode = VideoConcatMode.sequential
     elif params.video_count == 1:
         video_concat_mode = params.video_concat_mode
@@ -343,10 +459,15 @@ def generate_final_videos(
             utils.task_dir(task_id), f"combined-{index}.mp4"
         )
         logger.info(f"\n\n## combining video: {index} => {combined_video_path}")
-        # Manim scenes are timed to the narration; combine_videos would truncate
-        # them to max_clip_duration (often 5s) and loop — keep the full render.
-        if params.video_source == "manim" and len(downloaded_videos) == 1:
-            logger.info("using full manim render without clip truncation or looping")
+        # Manim / Reddit scenes are timed to the narration; combine_videos would
+        # truncate them to max_clip_duration (often 5s) and loop — keep the full render.
+        if (
+            params.video_source in ("manim", "reddit")
+            and len(downloaded_videos) == 1
+        ):
+            logger.info(
+                f"using full {params.video_source} render without clip truncation or looping"
+            )
             shutil.copyfile(downloaded_videos[0], combined_video_path)
         else:
             video.combine_videos(
@@ -402,10 +523,9 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
         return {"script": video_script}
 
     # 2. Generate terms
-    # 关键词只服务于在线图库素材搜索；local 素材由用户提供，manim 则由
-    # 场景说明驱动，都不需要搜索词。
+    # 关键词只服务于在线图库素材搜索；local / manim / reddit 都不需要搜索词。
     video_terms = ""
-    if params.video_source not in ("local", "manim"):
+    if params.video_source not in ("local", "manim", "reddit"):
         video_terms = generate_terms(task_id, params, video_script)
         if not video_terms:
             sm.state.update_task(task_id, state=const.TASK_STATE_FAILED)
@@ -442,7 +562,7 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
 
     # 4. Generate subtitle
     subtitle_path = generate_subtitle(
-        task_id, params, video_script, sub_maker, audio_file
+        task_id, params, video_script, sub_maker, audio_file, audio_duration
     )
 
     if stop_at == "subtitle":
