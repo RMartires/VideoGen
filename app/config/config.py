@@ -170,7 +170,7 @@ reddit = _cfg.get(
     "reddit",
     {
         "gameplay_dir": "resource/gameplay",
-        "comment_limit": 5,
+                "comment_limit": 0,
         "user_agent": "MoneyPrinterTurbo/1.3 (Reddit story mode)",
         "client_id": "",
         "client_secret": "",

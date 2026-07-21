@@ -108,19 +108,35 @@ def test_build_script_from_post(sample_post):
     assert sample_post.title in script
     assert "Once upon a time" in script
     assert "Comment by" not in script
-    assert "This reminds me" in script
+    # Comments are excluded from narration.
+    assert "This reminds me" not in script
 
 
 def test_narration_segments_and_timing(sample_post):
     segments = narration_segments(sample_post)
     assert segments[0]["kind"] == "title"
     assert any(s["kind"] == "body_chunk" for s in segments)
-    timed = allocate_segment_times(segments, total_duration=10.0)
+    assert all(s["kind"] != "comment" for s in segments)
+    timed = allocate_segment_times(segments, total_duration=30.0)
     assert timed[0]["start"] == 0.0
-    assert timed[-1]["end"] == pytest.approx(10.0)
+    assert timed[-1]["end"] == pytest.approx(30.0)
     assert all(s["end"] > s["start"] for s in timed)
-    # Title floor should give the hook a readable share on long scripts.
-    assert timed[0]["end"] - timed[0]["start"] >= 0.5
+    # Per-segment floor (~2s) when duration allows.
+    assert all(s["end"] - s["start"] >= 1.9 for s in timed[:-1])
+    # Title floor should give the hook a readable share.
+    assert timed[0]["end"] - timed[0]["start"] >= 2.0
+
+
+def test_allocate_segment_times_short_video_clamps_floor():
+    segments = [
+        {"kind": "title", "text": "Hi"},
+        {"kind": "body_chunk", "text": "A"},
+        {"kind": "body_chunk", "text": "B"},
+    ]
+    timed = allocate_segment_times(segments, total_duration=3.0, min_duration=2.0)
+    assert timed[-1]["end"] == pytest.approx(3.0)
+    # Equal-ish split when floor*n exceeds duration.
+    assert all(s["end"] - s["start"] >= 0.9 for s in timed)
 
 
 def test_write_segment_subtitles(tmp_path):
@@ -161,13 +177,19 @@ def test_render_post_card_and_export(sample_post, tmp_path):
     assert img.size[0] == 600
     assert img.size[1] > 100
 
-    chunk_img = render_body_chunk_card(sample_post, "Once upon a time.", width=600)
-    assert chunk_img.size[0] == 600
+    with_title = render_body_chunk_card(
+        sample_post, "Once upon a time.", width=600, show_title=True
+    )
+    without_title = render_body_chunk_card(
+        sample_post, "Once upon a time.", width=600, show_title=False
+    )
+    assert with_title.size[0] == 600
+    assert without_title.size[1] < with_title.size[1]
 
-    paths = export_card_pngs(sample_post, str(tmp_path), card_width=600)
+    paths = export_card_pngs(sample_post, str(tmp_path), card_width=600, title_beats=2)
     assert os.path.isfile(paths["post"])
     assert os.path.isfile(paths["post_title"])
-    assert os.path.isfile(paths["comment_0"])
+    assert "comment_0" not in paths
     assert any(k.startswith("body_chunk_") for k in paths)
 
 

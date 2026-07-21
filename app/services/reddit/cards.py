@@ -186,11 +186,13 @@ def render_body_chunk_card(
     *,
     width: int = 900,
     max_title_lines: int = 2,
+    show_title: bool = True,
 ) -> Image.Image:
     """
-    Compact progressive body card: meta + short title + current sentence chunk.
+    Compact progressive body card: meta + optional short title + current chunk.
 
-    Keeps gameplay visible by avoiding full-post walls of text.
+    After the first few beats, callers pass show_title=False so only the
+    spoken sentence appears (less chrome, more gameplay).
     """
     padding = 24
     avatar_size = 44
@@ -198,7 +200,7 @@ def render_body_chunk_card(
     meta_font = _font(22)
     body_font = _font(28)
 
-    title_lines = _wrap(post.title, width=40)[:max_title_lines]
+    title_lines = _wrap(post.title, width=40)[:max_title_lines] if show_title else []
     chunk_lines = _wrap((chunk or "").strip(), width=42)
 
     line_h_title = 34
@@ -208,11 +210,11 @@ def render_body_chunk_card(
         + avatar_size
         + 12
         + len(title_lines) * line_h_title
-        + 10
+        + (10 if title_lines else 4)
         + len(chunk_lines) * line_h_body
         + padding
     )
-    height = max(160, content_h)
+    height = max(140, content_h)
     img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     _draw_rounded_rect(
@@ -226,7 +228,7 @@ def render_body_chunk_card(
         draw.text((padding, y), line, font=title_font, fill=_MUTED)
         y += line_h_title
 
-    y += 6
+    y += 6 if title_lines else 2
     for line in chunk_lines:
         draw.text((padding, y), line, font=body_font, fill=_TEXT)
         y += line_h_body
@@ -241,7 +243,7 @@ def render_comment_card(
     width: int = 900,
     max_body_chars: int = 280,
 ) -> Image.Image:
-    """Render a single comment card."""
+    """Render a single comment card (kept for debugging; story mode skips comments)."""
     padding = 24
     avatar_size = 48
     meta_font = _font(22)
@@ -285,17 +287,23 @@ def render_comment_card(
     return img
 
 
+# First N body-chunk cards keep a muted title; later beats show chunk only.
+_BODY_TITLE_BEATS = 2
+
+
 def export_card_pngs(
     post: RedditPost,
     output_dir: str,
     *,
     card_width: int = 900,
     body_chunks: list[str] | None = None,
+    title_beats: int = _BODY_TITLE_BEATS,
 ) -> dict[str, str]:
     """
-    Write card PNGs for the post title, each body chunk, and each comment.
+    Write card PNGs for the post title and each body chunk.
 
-    Returns keys: "post_title", "body_chunk_{i}", "comment_{i}", and legacy "post".
+    Comments are not exported in story mode. Body chunks show the muted title
+    only for the first ``title_beats`` cards.
     """
     os.makedirs(output_dir, exist_ok=True)
     paths: dict[str, str] = {}
@@ -314,16 +322,15 @@ def export_card_pngs(
     paths["post"] = post_full_path
 
     for index, chunk in enumerate(chunks):
-        card = render_body_chunk_card(post, chunk, width=card_width)
+        card = render_body_chunk_card(
+            post,
+            chunk,
+            width=card_width,
+            show_title=index < max(0, int(title_beats)),
+        )
         path = os.path.join(output_dir, f"card_body_chunk_{index}.png")
         card.save(path, "PNG")
         paths[f"body_chunk_{index}"] = path
-
-    for index, comment in enumerate(post.comments):
-        card = render_comment_card(comment, width=card_width)
-        path = os.path.join(output_dir, f"card_comment_{index}.png")
-        card.save(path, "PNG")
-        paths[f"comment_{index}"] = path
 
     return paths
 

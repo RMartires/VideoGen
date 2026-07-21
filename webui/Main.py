@@ -952,20 +952,9 @@ with middle_panel:
                 st.caption(tr("Reddit OAuth Configured"))
             else:
                 st.caption(tr("Reddit Public JSON Fallback"))
-            default_comment_limit = int(
-                reddit_cfg.get("comment_limit", 5) or 5
-            )
-            params.reddit_comment_limit = st.slider(
-                tr("Reddit Comment Limit"),
-                min_value=1,
-                max_value=15,
-                value=int(
-                    st.session_state.get(
-                        "reddit_comment_limit", default_comment_limit
-                    )
-                ),
-                key="reddit_comment_limit",
-            )
+            # Story cut is title + body only (no comments / no burn-in captions).
+            params.reddit_comment_limit = 0
+            st.caption(tr("Reddit Story No Comments"))
             default_gameplay = str(
                 reddit_cfg.get("gameplay_dir", "resource/gameplay")
             )
@@ -1004,9 +993,10 @@ with middle_panel:
                             st.success(tr("Reddit Script Fetched"))
                         except Exception as exc:
                             st.error(str(exc))
-            # Reddit story cards sit in the upper half; keep captions near the bottom.
+            # Reddit story: cards only (captions disabled in the pipeline).
             if "subtitle_position" not in st.session_state:
                 st.session_state["subtitle_position"] = "bottom"
+            params.subtitle_enabled = False
 
         selected_index = st.selectbox(
             tr("Video Concat Mode"),

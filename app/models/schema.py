@@ -89,7 +89,7 @@ class VideoParams(BaseModel):
     manim_background_color: Optional[str] = None
     # Optional settings for video_source="reddit" (Short.ai-style Reddit story).
     reddit_url: Optional[str] = None
-    reddit_comment_limit: int = Field(default=5, ge=1, le=15)
+    reddit_comment_limit: int = Field(default=0, ge=0, le=15)
     reddit_theme: str = "dark"
     reddit_gameplay_dir: Optional[str] = None
 

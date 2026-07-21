@@ -1,6 +1,6 @@
 # Reddit Story Mode
 
-Short.ai-style Reddit story videos: paste a Reddit post URL, fetch title/body/top comments, narrate with TTS, and overlay progressive Reddit-style cards on looping local gameplay footage.
+Short.ai-style Reddit story videos: paste a Reddit post URL, fetch title/body, narrate with TTS, and overlay progressive Reddit-style cards on looping local gameplay footage.
 
 ## Setup
 
@@ -9,7 +9,7 @@ Short.ai-style Reddit story videos: paste a Reddit post URL, fetch title/body/to
 ```toml
 [reddit]
 gameplay_dir = "resource/gameplay"
-comment_limit = 5
+comment_limit = 0
 user_agent = "MoneyPrinterTurbo/1.3 by u/YOUR_USERNAME"
 # Optional — script app at https://www.reddit.com/prefs/apps
 client_id = ""
@@ -40,11 +40,12 @@ If OAuth fails or credentials are empty, the client falls back to the public `.j
 
 ## Entertainment behavior
 
-- Title hook card with a short timing floor
-- Body revealed sentence-by-sentence (progressive cards + matching captions)
-- Comments ranked for punchiness (score × length penalty) and soft-truncated
+- Title hook card, then sentence-by-sentence body cards
+- No burn-in captions (cards only)
+- No comments in narration or on screen
+- ~2s minimum segment duration so short lines stay readable
+- Muted title on the first two body cards only; later beats show the sentence alone
 - Card fade/scale enter; max ~40% frame height so gameplay stays visible
-- Narration reads comment text only (author shown on the card)
 
 ## Test script
 
@@ -54,10 +55,10 @@ uv run python scripts/test_reddit_story.py \
   --fixture test/services/fixtures/confessions_1v1uq6u.json \
   --stage compose --duration 12
 
-# Full end-to-end (TTS + segment subtitles + final MP4):
+# Full end-to-end (TTS + final MP4, no captions):
 uv run python scripts/test_reddit_story.py \
   --fixture test/services/fixtures/confessions_1v1uq6u.json \
-  --stage full --comment-limit 3
+  --stage full
 ```
 
 ### Reddit 403 note
@@ -77,9 +78,9 @@ Without OAuth, Reddit often returns **403 Blocked** for the public `.json` API f
   "video_subject": "Reddit Story",
   "video_source": "reddit",
   "reddit_url": "https://www.reddit.com/r/.../comments/.../",
-  "reddit_comment_limit": 5,
   "video_aspect": "9:16",
-  "voice_name": "en-US-EmmaNeural-Female"
+  "voice_name": "en-US-EmmaNeural-Female",
+  "subtitle_enabled": false
 }
 ```
 

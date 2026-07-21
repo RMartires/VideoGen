@@ -66,10 +66,7 @@ def generate_script(task_id, params):
                     logger.error("reddit_url is required when video_source=reddit")
                     return None
                 try:
-                    comment_limit = getattr(params, "reddit_comment_limit", None)
-                    video_script, post = reddit.build_script_from_url(
-                        reddit_url, comment_limit=comment_limit
-                    )
+                    video_script, post = reddit.build_script_from_url(reddit_url)
                     _persist_reddit_post(task_id, post)
                     if post.title and (
                         not params.video_subject
@@ -99,10 +96,8 @@ def generate_script(task_id, params):
                 logger.error("reddit_url is required when video_source=reddit")
                 return None
             try:
-                post = reddit.fetch_post(
-                    reddit_url,
-                    comment_limit=getattr(params, "reddit_comment_limit", None),
-                )
+                # Story mode narrates title + body only (no comments).
+                post = reddit.fetch_post(reddit_url, comment_limit=0)
                 _persist_reddit_post(task_id, post)
             except Exception as exc:
                 sm.state.update_task(task_id, state=const.TASK_STATE_FAILED)
@@ -279,38 +274,12 @@ def generate_subtitle(task_id, params, video_script, sub_maker, audio_file, audi
     if not params.subtitle_enabled:
         return ""
 
-    subtitle_path = path.join(utils.task_dir(task_id), "subtitle.srt")
-
-    # Reddit mode: one cue per narration segment (current spoken chunk), not
-    # Whisper/edge full-script captions that duplicate the on-screen cards.
+    # Reddit story mode: cards carry the text; burn-in captions are disabled.
     if params.video_source == "reddit":
-        from app.services.reddit.script import (
-            allocate_segment_times,
-            narration_segments,
-            write_segment_subtitles,
-        )
+        logger.info("reddit mode: skipping captions (cards only)")
+        return ""
 
-        post = _load_reddit_post(task_id)
-        if post is None:
-            logger.warning("reddit post metadata missing; skipping segment subtitles")
-            return ""
-        duration = float(audio_duration or 0.0)
-        if duration <= 0 and audio_file and path.isfile(audio_file):
-            try:
-                duration = float(voice.get_audio_duration(audio_file))
-            except Exception:
-                duration = 0.0
-        if duration <= 0:
-            logger.warning("reddit subtitle timing unavailable; skipping subtitles")
-            return ""
-        segments = allocate_segment_times(narration_segments(post), duration)
-        write_segment_subtitles(segments, subtitle_path)
-        subtitle_lines = subtitle.file_to_subtitles(subtitle_path)
-        if not subtitle_lines:
-            logger.warning(f"subtitle file is invalid: {subtitle_path}")
-            return ""
-        logger.info(f"reddit segment subtitles written: {len(subtitle_lines)} cues")
-        return subtitle_path
+    subtitle_path = path.join(utils.task_dir(task_id), "subtitle.srt")
 
     subtitle_script = video_script
     if voice.is_chatterbox_voice(params.voice_name):

@@ -116,6 +116,7 @@
     "Fetch Reddit Script": "拉取 Reddit 文案",
     "Fetching Reddit Post": "正在拉取 Reddit 帖子…",
     "Reddit Script Fetched": "已将 Reddit 文案填入脚本框",
+    "Reddit Story No Comments": "故事模式只朗读帖子正文（不含评论，不烧录字幕）。",
     "Reddit OAuth Configured": "已配置 Reddit OAuth — 将通过官方 API 拉取",
     "Reddit Public JSON Fallback": "未配置 Reddit OAuth — 将使用公开 .json（可能 403）。请在 config.toml 的 [reddit] 下填写 client_id/client_secret。",
     "Pixabay": "Pixabay",

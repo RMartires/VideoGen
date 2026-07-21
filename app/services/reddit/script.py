@@ -9,6 +9,8 @@ from app.utils import utils
 
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z\"'])|(?<=[.!?])\s*\n+|\n{2,}")
 _MAX_CHUNK_CHARS = 140
+# Readable floor so short punch lines don't blink (~1.8–2.2s range).
+_MIN_SEGMENT_SECONDS = 2.0
 
 
 def chunk_body_text(text: str, max_chars: int = _MAX_CHUNK_CHARS) -> list[str]:
@@ -53,10 +55,9 @@ def build_script_from_post(post: RedditPost) -> str:
     """
     Build a plain-text narration script from a normalized Reddit post.
 
-    Structure for TTS pacing:
+    Structure for TTS pacing (comments are intentionally omitted):
       1) Title
       2) Body chunks (sentence-sized)
-      3) Each selected comment body (author stays on the card, not spoken)
     """
     parts: list[str] = []
     title = (post.title or "").strip()
@@ -66,11 +67,6 @@ def build_script_from_post(post: RedditPost) -> str:
     for chunk in chunk_body_text(post.selftext or ""):
         parts.append(chunk)
 
-    for comment in post.comments:
-        text = (comment.body or "").strip()
-        if text:
-            parts.append(text)
-
     script = "\n\n".join(parts).strip()
     if not script:
         raise ValueError("Reddit post produced an empty narration script")
@@ -78,8 +74,10 @@ def build_script_from_post(post: RedditPost) -> str:
 
 
 def build_script_from_url(url: str, comment_limit: int | None = None) -> tuple[str, RedditPost]:
-    """Fetch a Reddit URL and return (script, post)."""
-    post = fetch_post(url, comment_limit=comment_limit)
+    """Fetch a Reddit URL and return (script, post). Comments are not narrated."""
+    # comment_limit kept for API compatibility; story mode does not use comments.
+    _ = comment_limit
+    post = fetch_post(url, comment_limit=0)
     return build_script_from_post(post), post
 
 
@@ -87,8 +85,8 @@ def narration_segments(post: RedditPost) -> list[dict]:
     """
     Split the post into timed narration segments for card reveals.
 
-    Each segment has: kind ("title"|"body_chunk"|"comment"), text,
-    optional comment_index / chunk_index.
+    Each segment has: kind ("title"|"body_chunk"), text, optional chunk_index.
+    Comments are excluded from the story cut.
     """
     segments: list[dict] = []
     title = (post.title or "").strip()
@@ -111,59 +109,53 @@ def narration_segments(post: RedditPost) -> list[dict]:
                 "chunk_index": index,
             }
         )
-
-    for index, comment in enumerate(post.comments):
-        text = (comment.body or "").strip()
-        if not text:
-            continue
-        segments.append(
-            {
-                "kind": "comment",
-                "text": text,
-                "comment_index": index,
-                "chunk_index": None,
-            }
-        )
     return segments
 
 
 def allocate_segment_times(
     segments: list[dict],
     total_duration: float,
+    *,
+    min_duration: float = _MIN_SEGMENT_SECONDS,
 ) -> list[dict]:
     """
-    Assign start/end times proportional to character weight.
+    Assign start/end times with a per-segment floor, then weight the remainder.
 
-    Title segments get a floor of min(3s, 8% of duration) so the hook is readable.
-    Returns segments with start/end floats attached.
+    Every segment gets at least ``min_duration`` (clamped to equal-split when the
+    video is too short). Leftover time is distributed by character weight.
+    Title also keeps a mild hook boost via weight inflation.
     """
     if not segments:
         return []
+    n = len(segments)
     duration = max(float(total_duration), 0.1)
+    floor = min(float(min_duration), duration / n)
+
     weights = [float(max(len((s.get("text") or "").strip()), 1)) for s in segments]
 
-    # Boost title so the hook isn't a blink on long posts.
-    title_floor = min(3.0, duration * 0.08)
+    # Mild title boost so the hook stays readable on long posts.
+    title_target = min(3.0, max(floor, duration * 0.08))
     title_indices = [i for i, s in enumerate(segments) if s.get("kind") == "title"]
-    if title_indices and duration > title_floor + 0.5:
+    if title_indices and duration > title_target + floor * (n - 1):
         title_i = title_indices[0]
-        total_weight = sum(weights) or 1.0
-        natural_title = duration * (weights[title_i] / total_weight)
-        if natural_title < title_floor:
-            # Inflate title weight so its share ≈ title_floor.
-            other = total_weight - weights[title_i]
-            if other > 0:
-                # title_share = w_t / (w_t + other) = title_floor / duration
-                # w_t = other * title_floor / (duration - title_floor)
-                weights[title_i] = other * title_floor / max(duration - title_floor, 0.1)
+        # After floors, leftover pool is duration - floor*n.
+        # Aim for title length ≈ title_target => extra_title ≈ title_target - floor.
+        leftover = max(duration - floor * n, 0.0)
+        want_extra = max(title_target - floor, 0.0)
+        if leftover > 0 and want_extra > 0:
+            other = sum(weights) - weights[title_i]
+            # Share of leftover for title = want_extra / leftover
+            # w_t / (w_t + other) = want_extra / leftover
+            if other > 0 and want_extra < leftover:
+                weights[title_i] = other * want_extra / max(leftover - want_extra, 0.1)
 
     total_weight = sum(weights) or 1.0
+    leftover = max(duration - floor * n, 0.0)
     cursor = 0.0
     timed: list[dict] = []
     for i, segment in enumerate(segments):
-        share = weights[i] / total_weight
-        length = duration * share
-        if i == len(segments) - 1:
+        length = floor + leftover * (weights[i] / total_weight)
+        if i == n - 1:
             end = duration
         else:
             end = min(duration, cursor + length)
@@ -180,9 +172,9 @@ def write_segment_subtitles(
     subtitle_file: str,
 ) -> str:
     """
-    Write an SRT where each cue is one narration segment (current spoken chunk).
+    Write an SRT where each cue is one narration segment.
 
-    Avoids full-script Whisper captions that duplicate the Reddit cards.
+    Kept for tests/debugging; Reddit story mode no longer burns captions.
     """
     blocks: list[str] = []
     idx = 1
@@ -194,11 +186,6 @@ def write_segment_subtitles(
         end = float(segment.get("end", start + 0.05))
         if end <= start:
             end = start + 0.05
-        # Build a clean SRT block (no trailing whitespace-only lines).
-        # utils.text_to_srt pads a spaces line that MoviePy treats as an
-        # extra blank cue and then crashes on (None, "").
-        # Also collapse internal blank lines — MoviePy ends a cue on any
-        # empty line, so multiline comment bodies would split cues.
         start_ts = utils.time_convert_seconds_to_hmsm(start)
         end_ts = utils.time_convert_seconds_to_hmsm(end)
         caption = " ".join(text.split())
@@ -207,7 +194,6 @@ def write_segment_subtitles(
 
     payload = "\n\n".join(blocks)
     if payload:
-        # Trailing blank line required so MoviePy flushes the last cue.
         payload += "\n\n"
     with open(subtitle_file, "w", encoding="utf-8") as fp:
         fp.write(payload)

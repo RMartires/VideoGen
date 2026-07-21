@@ -117,6 +117,7 @@
     "Fetch Reddit Script": "Fetch Reddit Script",
     "Fetching Reddit Post": "Fetching Reddit post…",
     "Reddit Script Fetched": "Reddit script loaded into the script box",
+    "Reddit Story No Comments": "Story mode narrates the post only (no comments, no burn-in captions).",
     "Reddit OAuth Configured": "Reddit OAuth configured — fetching via official API",
     "Reddit Public JSON Fallback": "No Reddit OAuth credentials — using public .json (may 403). Add client_id/client_secret under [reddit] in config.toml.",
     "Pixabay": "Pixabay",

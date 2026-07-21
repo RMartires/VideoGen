@@ -167,8 +167,11 @@ def select_comments(
     Rank comments for entertainment and soft-truncate bodies.
 
     Prefers high-score short punches over long essays.
+    ``limit=0`` returns an empty list (story mode omits comments).
     """
-    limit = max(1, min(15, int(limit)))
+    limit = max(0, min(15, int(limit)))
+    if limit == 0:
+        return []
     ranked = sorted(comments, key=comment_entertainment_score, reverse=True)
     selected: list[RedditComment] = []
     for comment in ranked:
@@ -376,8 +379,8 @@ def load_post_from_fixture(path: str, comment_limit: int | None = None) -> Reddi
     import json
 
     reddit_cfg = getattr(config, "reddit", None) or {}
-    limit = int(comment_limit if comment_limit is not None else reddit_cfg.get("comment_limit", 5))
-    limit = max(1, min(15, limit))
+    limit = int(comment_limit if comment_limit is not None else reddit_cfg.get("comment_limit", 0))
+    limit = max(0, min(15, limit))
 
     with open(path, encoding="utf-8") as fp:
         payload = json.load(fp)
@@ -395,8 +398,8 @@ def load_post_from_fixture(path: str, comment_limit: int | None = None) -> Reddi
 def fetch_post(url: str, comment_limit: int | None = None) -> RedditPost:
     """Fetch a Reddit post and top comments (OAuth when configured, else .json)."""
     reddit_cfg = getattr(config, "reddit", None) or {}
-    limit = int(comment_limit if comment_limit is not None else reddit_cfg.get("comment_limit", 5))
-    limit = max(1, min(15, limit))
+    limit = int(comment_limit if comment_limit is not None else reddit_cfg.get("comment_limit", 0))
+    limit = max(0, min(15, limit))
 
     post: RedditPost | None = None
     oauth_error: Exception | None = None
